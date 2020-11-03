@@ -1,0 +1,48 @@
+build:
+  name: Build
+  agent:
+    type: Unity::VM
+    image: platform-foundation/windows-vs2019-bokken:latest
+    flavor: b1.small
+  interpreter: powershell
+  commands:
+    - .\.yamato\build.ps1
+  artifacts:
+    unsigned-ilrepack:
+      paths:
+        - Build/**
+sign:
+  name: Sign
+  agent:
+    type: Unity::VM
+    image: platform-foundation/windows-vs2019-bokken:latest
+    flavor: b1.small
+  interpreter: powershell
+  commands:
+    - .\.yamato\sign.ps1 -yamato_sign_project_id $env:yamato_sign_project_id -yamato_sign_project_branch_name $env:yamato_sign_project_branch_name -yamato_sign_project_revision $env:yamato_sign_project_revision -yamato_sign_project_name $env:yamato_sign_project_name -yamato_token $env:yamato_token
+  artifacts:
+    signed-ilrepack:
+      paths:
+        - Build/**
+  variables:
+    yamato_sign_project_id: 662
+    yamato_sign_project_branch_name: ilrepack-project
+    yamato_sign_project_revision: 23a7b317ec6e1124f52bbca6340d058052396362
+    yamato_sign_project_name: ILRepack
+  dependencies:
+    - .yamato/yamato-config.yml#build
+publish:
+  name: Publish
+  agent:
+    type: Unity::VM
+    image: platform-foundation/windows-vs2019-bokken:latest
+    flavor: b1.small
+  interpreter: powershell
+  commands:
+    - .\.yamato\publish.ps1 -stevedore_repository $env:stevedore_repository -stevedore_token $env:stevedore_token -ilrepack_version $env:GIT_TAG
+  variables:
+    stevedore_repository: testing
+  triggers:
+    expression: push.tag match "\d+\.\d+\.\d+(\.\d+)?"
+  dependencies:
+    - .yamato/yamato-config.yml#sign
