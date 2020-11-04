@@ -7,6 +7,8 @@ Param (
     [Parameter(Mandatory=$true)][string] $yamato_token
 )
 
+dir $env
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'

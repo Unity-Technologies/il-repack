@@ -5,6 +5,8 @@ Param (
     [Parameter(Mandatory=$true)][string] $ilrepack_version
 )
 
+dir $env
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
