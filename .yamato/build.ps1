@@ -24,7 +24,7 @@ $target_dll = Join-Path $artifacts_dir "ILRepack.dll"
 Write-Host "Preparing Artifacts in $artifacts_dir..."
 $ilrepacksnk = Get-ChildItem -Path .\ILRepack\ -Filter ILRepack.snk -Recurse  | Resolve-Path -Relative | Select-Object -First 1 
 $ilrepack = Get-ChildItem -Path .\ILRepack\bin\Release -Filter ILRepack.exe -Recurse | Resolve-Path -Relative | Select-Object -First 1
-$repack_list = Get-ChildItem .\ILRepack\bin\Release -Include *.dll, *.exe -Recurse | Resolve-Path -Relative
+$repack_list = Get-ChildItem .\ILRepack\bin\Release -Include *.exe, *.dll -Recurse | Sort-Object -Property Extension -Descending | Resolve-Path -Relative
 
 Write-Host "Found ILRepack.exe in $($ilrepack.Directory.Fullname)"
 Write-Host "Repacking everything into an executable $target_exe..."
