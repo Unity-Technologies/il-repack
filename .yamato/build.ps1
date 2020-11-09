@@ -1,8 +1,6 @@
 [CmdletBinding()]
 Param ()
 
-dir $env
-
 $ErrorActionPreference = 'Stop'
 
 Write-Host "Restoring nuget packages..."

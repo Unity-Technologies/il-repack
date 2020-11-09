@@ -5,8 +5,6 @@ Param (
     [Parameter(Mandatory=$true)][string] $ilrepack_version
 )
 
-dir $env
-
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -14,19 +12,14 @@ $ProgressPreference = 'SilentlyContinue'
 Set-Variable stevedore_api_uri -option Constant -value "https://stevedore-upload.ds.unity3d.com"
 Set-Variable stevedore_api_header -option Constant -value @{"Authorization" = "Bearer $stevedore_token"}
 
-Write-Host "==================================================================="
-dir env:
-Write-Host "==================================================================="
-ls -Recurse | Format-Table Fullname
-
 # Package for stevedore
 Write-Host "Preparing publishing package..."
 $artifacts_dir = mkdir ".\Build\Release" -Force
 $dest_dir = Join-Path $(Resolve-Path .\) "publish.zip"
-Copy-Item .\LICENSE $artifacts_dir -Force
+Copy-Item .\.yamato\README $artifacts_dir -Force
+Copy-Item .\.yamato\LICENSE $artifacts_dir -Force
 Remove-Item "$artifacts_dir\*.json"
-# Compress-Archive -Path $artifacts_dir -DestinationPath .\publish.zip -Force
-Add-Type -Assembly "System.IO.Compression.FileSystem" ;
+Add-Type -Assembly "System.IO.Compression.FileSystem";
 [System.IO.Compression.ZipFile]::CreateFromDirectory($artifacts_dir, $dest_dir);
 
 $filehash = Get-FileHash -Algorithm SHA256 .\publish.zip

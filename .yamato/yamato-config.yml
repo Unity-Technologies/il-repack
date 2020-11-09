@@ -19,7 +19,7 @@ sign:
     flavor: b1.small
   interpreter: powershell
   commands:
-    - .\.yamato\sign.ps1 -yamato_sign_project_id $env:yamato_sign_project_id -yamato_sign_project_branch_name $env:yamato_sign_project_branch_name -yamato_sign_project_revision $env:yamato_sign_project_revision -yamato_sign_project_name $env:yamato_sign_project_name -yamato_token $env:yamato_token
+    - .\.yamato\sign.ps1 -yamato_sign_project_id $env:yamato_sign_project_id -yamato_sign_project_branch_name $env:yamato_sign_project_branch_name -yamato_sign_project_revision $env:yamato_sign_project_revision -yamato_sign_project_name $env:yamato_sign_project_name -yamato_token $env:YAMATO_TOKEN
   artifacts:
     signed-ilrepack:
       paths:
@@ -39,7 +39,7 @@ publish:
     flavor: b1.small
   interpreter: powershell
   commands:
-    - .\.yamato\publish.ps1 -stevedore_repository $env:stevedore_repository -stevedore_token $env:stevedore_token -ilrepack_version $env:GIT_TAG
+    - .\.yamato\publish.ps1 -stevedore_repository $env:stevedore_repository -stevedore_token $env:STEVEDORE_UPLOAD_KEY -ilrepack_version $env:GIT_TAG
   variables:
     stevedore_repository: testing
   triggers:
