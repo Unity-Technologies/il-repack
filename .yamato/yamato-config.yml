@@ -41,7 +41,7 @@ publish:
   commands:
     - .\.yamato\publish.ps1 -stevedore_repository $env:stevedore_repository -stevedore_token $env:STEVEDORE_UPLOAD_KEY -ilrepack_version $env:GIT_TAG
   variables:
-    stevedore_repository: testing
+    stevedore_repository: unity-internal
   triggers:
     expression: push.tag match "\d+\.\d+\.\d+(\.\d+)?"
   dependencies:
