@@ -1,4 +1,3 @@
-------------
 PLEASE NOTE
 ------------
 
@@ -17,5 +16,7 @@ stock distribution from NuGet. At this time, this seems very unlikely as the
 mainline development stalled for many months.  
 
 We are using our internal yamato build system in order to build, sign and
-publish this to stevedore package manager.  To create a new build, simply create
-a new version tag.  You will currently find the package in stevedore testing.
+publish this to stevedore package manager.  Signing the executable prevents
+anti-virus heuristics to detect false positive viruses. To create a new build,
+simply create a new version tag.  You will currently find the package in 
+stevedore public.

@@ -19,8 +19,9 @@ Write-Host "Preparing publishing package..."
 $artifacts_dir = mkdir ".\Build\Release" -Force
 $ilrepack_dir = mkdir ".\artifacts\ilrepack\" -Force
 $dest_dir = Join-Path $(Resolve-Path .\) "publish.zip"
-Copy-Item .\.yamato\README $artifacts_dir -Force
-Copy-Item .\LICENSE $artifacts_dir -Force
+Copy-Item ".\.yamato\README.md" $artifacts_dir -Force
+Copy-Item ".\Third party notices.md" $artifacts_dir -Force
+Copy-Item ".\LICENSE.md" $artifacts_dir -Force
 Remove-Item "$artifacts_dir\*.json"
 Add-Type -Assembly "System.IO.Compression.FileSystem";
 [System.IO.Compression.ZipFile]::CreateFromDirectory($artifacts_dir, $dest_dir);
