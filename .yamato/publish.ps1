@@ -1,20 +1,23 @@
 [CmdletBinding()]
 Param (
     [Parameter(Mandatory=$true)][string] $stevedore_repository,
-    [Parameter(Mandatory=$true)][string] $stevedore_token,
+    [Parameter(Mandatory=$true)][string] $stevedore_upload_tool_url,
     [Parameter(Mandatory=$true)][string] $ilrepack_version
 )
+
+# For debugging
+rmdir ".\artifacts\ilrepack\" -Force -Recurse -ErrorAction Ignore
+rm publish.zip -Force -ErrorAction Ignore
+rm StevedoreUpload.exe -Force -ErrorAction Ignore
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-Set-Variable stevedore_api_uri -option Constant -value "https://stevedore-upload.ds.unity3d.com"
-Set-Variable stevedore_api_header -option Constant -value @{"Authorization" = "Bearer $stevedore_token"}
-
 # Package for stevedore
 Write-Host "Preparing publishing package..."
 $artifacts_dir = mkdir ".\Build\Release" -Force
+$ilrepack_dir = mkdir ".\artifacts\ilrepack\" -Force
 $dest_dir = Join-Path $(Resolve-Path .\) "publish.zip"
 Copy-Item .\.yamato\README $artifacts_dir -Force
 Copy-Item .\.yamato\LICENSE $artifacts_dir -Force
@@ -22,19 +25,11 @@ Remove-Item "$artifacts_dir\*.json"
 Add-Type -Assembly "System.IO.Compression.FileSystem";
 [System.IO.Compression.ZipFile]::CreateFromDirectory($artifacts_dir, $dest_dir);
 
-$filehash = Get-FileHash -Algorithm SHA256 .\publish.zip
-$stevedore_artifactid = "ilrepack/$($ilrepack_version)_$($filehash.Hash).zip".ToLowerInvariant()
+# Rename with Hash
+$filehash = Get-FileHash -Algorithm SHA256 $dest_dir
+$stevedore_artifactid = "$ilrepack_dir\$($ilrepack_version)_$($filehash.Hash).zip".ToLowerInvariant()
+mv $dest_dir $stevedore_artifactid -Force
 
-# Upload
-$uri = "$stevedore_api_uri/upload/r/$stevedore_repository/$stevedore_artifactid"
-Write-Host "Uploading to stevedore ($uri)"
-$response = Invoke-WebRequest -UseBasicParsing `
-    -Method POST -Headers $stevedore_api_header -ContentType "multipart/form-data" `
-    -Uri $uri `
-    -InFile .\publish.zip
-
-$response.Content
-if ($response.StatusCode -ne 200) {
-    throw "Could not upload to stevedore"
-}
-exit 0
+Invoke-WebRequest -Uri $stevedore_upload_tool_url -OutFile ./StevedoreUpload.exe
+Write-Host ".\StevedoreUpload.exe --repo=$stevedore_repository --version=$ilrepack_version $stevedore_artifactid"
+.\StevedoreUpload.exe --repo=$stevedore_repository --version=$ilrepack_version $stevedore_artifactid

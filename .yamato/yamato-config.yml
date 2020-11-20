@@ -39,7 +39,7 @@ publish:
     flavor: b1.small
   interpreter: powershell
   commands:
-    - .\.yamato\publish.ps1 -stevedore_repository $env:stevedore_repository -stevedore_token $env:STEVEDORE_UPLOAD_KEY -ilrepack_version $env:GIT_TAG
+    - .\.yamato\publish.ps1 -stevedore_repository $env:STEVEDORE_REPOSITORY -stevedore_upload_tool_url $env:STEVEDORE_UPLOAD_TOOL_URL -ilrepack_version $env:GIT_TAG
   variables:
     stevedore_repository: unity-internal
   triggers:

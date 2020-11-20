@@ -32,3 +32,5 @@ _NCrunch*
 *.DotSettings
 /.vs
 /.idea
+StevedoreUpload.exe
+artifacts/
