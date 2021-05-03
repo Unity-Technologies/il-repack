@@ -6,7 +6,15 @@ build:
     flavor: b1.small
   interpreter: powershell
   commands:
-    - .\.yamato\build.ps1
+    - |
+      try
+      {
+        .\.yamato\build.ps1
+      }
+      catch
+      {
+        exit 1
+      }
   artifacts:
     unsigned-ilrepack:
       paths:
@@ -19,7 +27,15 @@ sign:
     flavor: b1.small
   interpreter: powershell
   commands:
-    - .\.yamato\sign.ps1 -yamato_sign_project_id $env:yamato_sign_project_id -yamato_sign_project_branch_name $env:yamato_sign_project_branch_name -yamato_sign_project_revision $env:yamato_sign_project_revision -yamato_sign_project_name $env:yamato_sign_project_name -yamato_token $env:YAMATO_TOKEN
+    - |
+      try
+      {
+        .\.yamato\sign.ps1 -yamato_sign_project_id $env:yamato_sign_project_id -yamato_sign_project_branch_name $env:yamato_sign_project_branch_name -yamato_sign_project_revision $env:yamato_sign_project_revision -yamato_sign_project_name $env:yamato_sign_project_name -yamato_token $env:YAMATO_TOKEN
+      }
+      catch
+      {
+        exit 1
+      }
   artifacts:
     signed-ilrepack:
       paths:
@@ -39,10 +55,53 @@ publish:
     flavor: b1.small
   interpreter: powershell
   commands:
-    - .\.yamato\publish.ps1 -stevedore_repository $env:STEVEDORE_REPOSITORY -stevedore_upload_tool_url $env:STEVEDORE_UPLOAD_TOOL_URL -ilrepack_version $env:GIT_TAG
+    - |
+      try
+      {
+        .\.yamato\publish.ps1 -stevedore_repository $env:STEVEDORE_REPOSITORY -stevedore_upload_tool_url $env:STEVEDORE_UPLOAD_TOOL_URL -ilrepack_version $env:GIT_TAG
+      }
+      catch
+      {
+        exit 1
+      }
   variables:
     stevedore_repository: unity-internal
   triggers:
     expression: push.tag match "\d+\.\d+\.\d+(\.\d+)?"
   dependencies:
     - .yamato/yamato-config.yml#sign
+PowershellTest1:
+  name: PowershellTest1
+  agent:
+    type: Unity::VM
+    image: platform-foundation/windows-vs2019-bokken:latest
+    flavor: b1.small
+  interpreter: powershell
+  commands:
+    - |
+      try
+      {
+        throw "Fun"
+      }
+      catch
+      {
+        exit 1
+      }
+PowershellTest2:
+  name: PowershellTest2
+  agent:
+    type: Unity::VM
+    image: platform-foundation/windows-vs2019-bokken:latest
+    flavor: b1.small
+  interpreter: powershell
+  commands:
+    - exit 1
+PowershellTest3:
+  name: PowershellTest3
+  agent:
+    type: Unity::VM
+    image: platform-foundation/windows-vs2019-bokken:latest
+    flavor: b1.small
+  interpreter: powershell
+  commands:
+    - throw "Fun"

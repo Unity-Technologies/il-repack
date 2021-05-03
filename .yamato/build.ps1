@@ -27,8 +27,14 @@ $repack_list = Get-ChildItem .\ILRepack\bin\Release -Include *.exe, *.dll -Recur
 Write-Host "Found ILRepack.exe in $($ilrepack.Directory.Fullname)"
 Write-Host "Repacking ($repack_list) into an executable $target_exe..."
 & "$ilrepack" /log /wildcards /internalize /ndebug /out:"$target_exe" /target:exe $repack_list
+if ($LASTEXITCODE -gt 0) {
+    throw "IlRepack failed"
+}
 Write-Host "Repacking ($repack_list) into a library $target_exe..."
 & $ilrepack /log /wildcards /internalize /keyfile:"$ilrepacksnk" /out:"$target_dll" /target:library $repack_list
+if ($LASTEXITCODE -gt 0) {
+    throw "IlRepack failed"
+}
 
 Write-Host "Recording job:$($env:YAMATO_JOB_ID) into $artifacts_dir..."
 @{

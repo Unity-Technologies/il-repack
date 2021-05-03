@@ -26,4 +26,7 @@ Add-Type -Assembly "System.IO.Compression.FileSystem";
 
 Write-Host "Uploading $dest_dir($ilrepack_version) to Stevedore $stevedore_repository repositry..."
 Invoke-WebRequest -Uri $stevedore_upload_tool_url -OutFile ./StevedoreUpload.exe
-.\StevedoreUpload.exe --repo=$stevedore_repository --version=$ilrepack_version $dest_dir
+./StevedoreUpload.exe --repo=$stevedore_repository --version=$ilrepack_version $dest_di
+if ($LASTEXITCODE -gt 0) {
+    throw "Stevedore Upload Failed with $LASTEXITCODE"
+}
