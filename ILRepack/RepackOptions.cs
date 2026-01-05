@@ -147,7 +147,7 @@ namespace ILRepacking
                 Parse();
         }
 
-        internal bool ShouldShowUsage => cmd.Modifier("?") || cmd.Modifier("help") || cmd.Modifier("h") || cmd.HasNoOptions;
+        internal bool ShouldShowUsage => cmd.Modifier("?") || cmd.Modifier("help") || cmd.Modifier("h") || (cmd.HasNoOptions && !IsMultiRepack);
 
         void Parse()
         {
