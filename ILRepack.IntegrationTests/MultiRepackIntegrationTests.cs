@@ -303,6 +303,70 @@ namespace ILRepack.IntegrationTests
             Assert.That(File.Exists(Path.Combine(_outputDir, "Indep2.dll")));
         }
 
+        [Test]
+        public void EndToEnd_MultipleReferencesToMergedAssemblies_NoDuplicates()
+        {
+            // Arrange - Create scenario where B references both A1 and A2, which get merged
+            // This tests that duplicate references are removed after rewriting
+            var libA1Path = CreateLibraryAssembly("LibraryA1", _tempDir, new[] { "ClassA1" });
+            var libA2Path = CreateLibraryAssembly("LibraryA2", _tempDir, new[] { "ClassA2" });
+            var libBPath = CreateLibraryAssembly("LibraryB", _tempDir, new[] { "ClassB" }, new[] { "LibraryA1", "LibraryA2" });
+
+            var configPath = Path.Combine(_tempDir, "config.json");
+            var config = new MultiRepackConfiguration
+            {
+                Groups = new List<AssemblyGroup>
+                {
+                    new AssemblyGroup
+                    {
+                        Name = "GroupA",
+                        InputAssemblies = new List<string> { libA1Path, libA2Path },
+                        OutputAssembly = Path.Combine(_outputDir, "MergedA.dll")
+                    },
+                    new AssemblyGroup
+                    {
+                        Name = "GroupB",
+                        InputAssemblies = new List<string> { libBPath },
+                        OutputAssembly = Path.Combine(_outputDir, "MergedB.dll")
+                    }
+                },
+                GlobalOptions = new GlobalRepackOptions
+                {
+                    SearchDirectories = new List<string> { _tempDir, _outputDir }
+                }
+            };
+            config.SaveToFile(configPath);
+
+            // Act
+            var options = new RepackOptions(new[] { $"/config:{configPath}" });
+            var logger = new RepackLogger(options);
+            
+            var configObj = MultiRepackConfiguration.LoadFromFile(configPath);
+            using (var orchestrator = new MultiRepackOrchestrator(configObj, logger))
+            {
+                orchestrator.Repack();
+            }
+
+            // Assert - Verify both outputs exist
+            var mergedAPath = Path.Combine(_outputDir, "MergedA.dll");
+            var mergedBPath = Path.Combine(_outputDir, "MergedB.dll");
+            Assert.That(File.Exists(mergedAPath), "MergedA.dll should exist");
+            Assert.That(File.Exists(mergedBPath), "MergedB.dll should exist");
+
+            // Verify MergedB references MergedA only once (no duplicates)
+            using (var mergedB = AssemblyDefinition.ReadAssembly(mergedBPath))
+            {
+                var references = mergedB.MainModule.AssemblyReferences
+                    .Where(r => r.Name == "MergedA")
+                    .ToList();
+                
+                var allReferences = string.Join(", ", mergedB.MainModule.AssemblyReferences.Select(r => r.Name));
+                Assert.That(references.Count, Is.EqualTo(1), 
+                    $"MergedB should have exactly 1 reference to MergedA, but found {references.Count}. " +
+                    $"All references: {allReferences}");
+            }
+        }
+
         // Helper method to create a library assembly with Cecil
         private string CreateLibraryAssembly(string name, string outputDir, string[] classNames, string[] references = null)
         {

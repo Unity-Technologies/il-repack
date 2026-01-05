@@ -420,7 +420,7 @@ namespace ILRepacking
                 
                 bool modified = false;
 
-                // Check each assembly reference
+                // Check each assembly reference and rewrite if needed
                 for (int i = 0; i < assembly.MainModule.AssemblyReferences.Count; i++)
                 {
                     var reference = assembly.MainModule.AssemblyReferences[i];
@@ -447,6 +447,27 @@ namespace ILRepacking
                             assembly.MainModule.AssemblyReferences[i] = newReference;
                             modified = true;
                         }
+                    }
+                }
+
+                // Remove duplicate references (e.g., when A1 and A2 both map to MergedA)
+                if (modified)
+                {
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var duplicates = new List<AssemblyNameReference>();
+                    
+                    foreach (var reference in assembly.MainModule.AssemblyReferences)
+                    {
+                        if (!seen.Add(reference.Name))
+                        {
+                            duplicates.Add(reference);
+                            _logger.Verbose($"Removing duplicate reference: {reference.Name}");
+                        }
+                    }
+                    
+                    foreach (var duplicate in duplicates)
+                    {
+                        assembly.MainModule.AssemblyReferences.Remove(duplicate);
                     }
                 }
 
