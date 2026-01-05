@@ -22,36 +22,28 @@ namespace ILRepack.IntegrationTests.NuGet
         }
         .Select(p => p.WithMatcher(file => supportedFwks.Select(d => d.Replace('/', Path.DirectorySeparatorChar)).Contains(Path.GetDirectoryName(file).ToLower())));
 
-        public static readonly Package Ikvm = Package.From("IKVM", "8.0.5449.1")
-            .WithMatcher(file => string.Equals("lib", Path.GetDirectoryName(file), StringComparison.InvariantCultureIgnoreCase));
+        public static readonly Package Ikvm = Package.From("IKVM", "8.15.0")
+            .WithMatcher(file => string.Equals($"runtimes/{CurrentPlatformRuntimeName}/lib/net8.0", Path.GetDirectoryName(file), StringComparison.InvariantCultureIgnoreCase));
 
+        static string CurrentPlatformRuntimeName
+            => System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier.Split('-')[0];
+        
         public static readonly IEnumerable<Platform> Platforms = Platform.From(
-            Package.From("UnionArgParser", "0.8.7"),
-            Package.From("FSharp.Core", "3.0.2")
-        ).WithFwks("net35", "net40").Concat(Platform.From(
-            Package.From("MassTransit", "2.9.9"),
-            Package.From("Magnum", "2.1.3"),
-            Package.From("Newtonsoft.Json", "6.0.8")
-        ).WithFwks("net35", "net40")).Concat(new[]
-        {
-            Platform.From(
-                Package.From("Microsoft.Bcl", "1.1.10")
-                    .WithMatcher(p => p.StartsWith($"lib{Path.DirectorySeparatorChar}net40")),
-                Package.From("Microsoft.Bcl.Async", "1.0.168")
-                    .WithMatcher(p => p.StartsWith($"lib{Path.DirectorySeparatorChar}net40")),
-                Package.From("System.Runtime", "4.3.0").WithFwk("net462"),
-                Package.From("System.Collections.Immutable", "1.3.1").WithFwk("portable-net45+win8+wp8+wpa81")
-            )
-        }).Concat(new[]
+            Package.From("FSharp.Core", "8.0.403")
+        ).WithFwks("netstandard2.0").Concat(Platform.From(
+            Package.From("MassTransit", "8.5.7"),
+            Package.From("MassTransit.Abstractions", "8.5.7"),
+            Package.From("Newtonsoft.Json", "13.0.4")
+        ).WithFwks("netstandard2.0")).Concat(new[]
         {
             Platform.From(Ikvm),
             Platform.From(
-                Package.From("Paket.Core", "1.11.6").WithFwk("net45"),
-                Package.From("FSharp.Core", "3.1.2.1").WithFwk("net40")
+                Package.From("Paket.Core", "9.0.2").WithFwk("netstandard2.0"),
+                Package.From("FSharp.Core", "8.0.403").WithFwk("netstandard2.0")
             ),
             Platform.From(
-                Package.From("FSharp.Compiler.Service", "1.4.0.6").WithFwk("net40"),
-                Package.From("FSharp.Core", "4.0.0.1").WithFwk("net40")
+                Package.From("FSharp.Compiler.Service", "43.10.101").WithFwk("netstandard2.0"),
+                Package.From("FSharp.Core", "8.0.403").WithFwk("netstandard2.0")
             )
         });
     }

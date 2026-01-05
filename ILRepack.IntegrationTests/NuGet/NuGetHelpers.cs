@@ -47,13 +47,18 @@ namespace ILRepack.IntegrationTests.NuGet
             allContent.RemoveAll(t => !package.Matches(t));
 
             return allContent;
-        }
+        } 
  
         public static async Task<List<(string normalizedName, Func<Stream> streamProvider)>> GetNupkgContentAsync(Package package)
         {
             var downloadBytes = await DownloadWithRetryAsync(
                 new Uri($"http://nuget.org/api/v2/package/{package.Name}/{package.Version}"));
             
+            return ExtractZipContent(downloadBytes);
+        }
+
+        private static List<(string normalizedName, Func<Stream> streamProvider)> ExtractZipContent(byte[] downloadBytes)
+        {
             var results = new List<(string normalizedName, Func<Stream> streamProvider)>();
             
             // We need to keep the zip file data in memory since we're returning Func<Stream>
