@@ -678,11 +678,6 @@ namespace ILRepacking
             if (fullName == "<Module>" || fullName == "__<Proxy>")
                 return true;
 
-            // XAML helper class, identical in all assemblies, unused within the assembly, and instanciated through reflection from the outside
-            // We could just skip them after the first one, but merging them works just fine
-            if (fullName == "XamlGeneratedNamespace.GeneratedInternalTypeHelper")
-                return true;
-
             // Merge should be OK since member's names are pretty unique,
             // but renaming duplicate members would be safer...
             if (fullName == "<PrivateImplementationDetails>" && type.IsPublic)

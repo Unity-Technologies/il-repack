@@ -32,13 +32,6 @@ jobs:
       with:
         fetch-depth: 0
     
-    - name: Setup .NET 3.1
-      run: |
-        apt-get update && apt-get install -y wget
-        wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-        chmod +x dotnet-install.sh
-        ./dotnet-install.sh --channel 3.1 --install-dir /usr/share/dotnet
-    
     - name: Cache NuGet packages
       uses: actions/cache@v4
       with:
@@ -57,7 +50,7 @@ jobs:
       run: |
         dotnet publish ILRepack/ILRepack.csproj \
           --configuration Release \
-          --framework netcoreapp3.1 \
+          --framework net8.0 \
           --output publish/tool \
           -p:PublishSingleFile=true \
           -p:PublishTrimmed=false \
@@ -86,9 +79,9 @@ jobs:
         path: |
           **/TestResults/*.trx
     
-    - name: Repack ILRepack using itself (netcoreapp3.1)
+    - name: Repack ILRepack using itself (net8.0)
       run: |
-        cd ILRepack/bin/Release/netcoreapp3.1
+        cd ILRepack/bin/Release/net8.0
         mkdir -p temp-repack
         
         # Use the built ILRepack to merge its dependencies
@@ -96,7 +89,6 @@ jobs:
           /out:temp-repack/ILRepack.dll \
           ILRepack.dll \
           Fasterflect.dll \
-          BamlParser.dll \
           Mono.Cecil.dll \
           Mono.Cecil.Mdb.dll \
           Mono.Cecil.Pdb.dll \
@@ -114,7 +106,7 @@ jobs:
     
     - name: Repack signed library version
       run: |
-        cd ILRepack/bin/Release/netcoreapp3.1
+        cd ILRepack/bin/Release/net8.0
         
         dotnet ILRepack.dll /log /wildcards /internalize \
           /keyfile:$GITHUB_WORKSPACE/ILRepack/ILRepack.snk \
@@ -122,7 +114,6 @@ jobs:
           /target:library \
           ILRepack.dll \
           Fasterflect.dll \
-          BamlParser.dll \
           Mono.Cecil.dll \
           Mono.Cecil.Mdb.dll \
           Mono.Cecil.Pdb.dll \
@@ -134,14 +125,14 @@ jobs:
         mkdir -p artifacts
         
         # Copy repacked DLL if it exists
-        if [ -f "ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.dll" ]; then
-          cp ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.dll artifacts/
-          cp ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.pdb artifacts/ || true
+        if [ -f "ILRepack/bin/Release/net8.0/temp-repack/ILRepack.dll" ]; then
+          cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.dll artifacts/
+          cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.pdb artifacts/ || true
         fi
         
         # Copy signed library if it exists
-        if [ -f "ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.Lib.dll" ]; then
-          cp ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.Lib.dll artifacts/
+        if [ -f "ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll" ]; then
+          cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll artifacts/
         fi
         
         # Copy single-file executable
@@ -152,8 +143,8 @@ jobs:
         
         # Fallback to standard builds
         if [ ! -f "artifacts/ILRepack.dll" ]; then
-          cp ILRepack/bin/Release/netcoreapp3.1/ILRepack.dll artifacts/ || true
-          cp ILRepack/bin/Release/netcoreapp3.1/ILRepack.pdb artifacts/ || true
+          cp ILRepack/bin/Release/net8.0/ILRepack.dll artifacts/ || true
+          cp ILRepack/bin/Release/net8.0/ILRepack.pdb artifacts/ || true
         fi
         
         ls -lah artifacts/
@@ -208,12 +199,12 @@ jobs:
         version="${{ steps.version.outputs.version }}"
         
         mkdir -p packages
-        mkdir -p nupkg/tools/netcoreapp3.1
+        mkdir -p nupkg/tools/net8.0
         mkdir -p nupkg/build
         
         # Copy files
-        cp artifacts/ILRepack.dll nupkg/tools/netcoreapp3.1/
-        cp artifacts/ILRepack.pdb nupkg/tools/netcoreapp3.1/ || true
+        cp artifacts/ILRepack.dll nupkg/tools/net8.0/
+        cp artifacts/ILRepack.pdb nupkg/tools/net8.0/ || true
         cp ILRepack.props nupkg/build/
         
         # Create nuspec file
@@ -233,8 +224,8 @@ jobs:
             <copyright>Copyright Alexander Vostres 2018-2020, Francois Valdy 2011-2015</copyright>
           </metadata>
           <files>
-            <file src="tools/netcoreapp3.1/ILRepack.dll" target="tools/netcoreapp3.1" />
-            <file src="tools/netcoreapp3.1/ILRepack.pdb" target="tools/netcoreapp3.1" />
+            <file src="tools/net8.0/ILRepack.dll" target="tools/net8.0" />
+            <file src="tools/net8.0/ILRepack.pdb" target="tools/net8.0" />
             <file src="build/ILRepack.props" target="build" />
           </files>
         </package>

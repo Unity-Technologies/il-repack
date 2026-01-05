@@ -117,15 +117,6 @@ namespace ILRepacking.Steps
                                     var er = (EmbeddedResource)resource;
                                     if (er.Name.EndsWith(".resources"))
                                     {
-                                        // we don't want to write the bamls to other embedded resource files
-                                        bool shouldWriteCollectedBamlStreams =
-                                            isPrimaryAssembly &&
-                                            $"{assembly.Name.Name}.g.resources".Equals(er.Name);
-
-                                        if (shouldWriteCollectedBamlStreams)
-                                        {
-                                        }
-
                                         newResource = FixResxResource(assembly, er, assemblyProcessors, null);
                                     }
                                     break;
