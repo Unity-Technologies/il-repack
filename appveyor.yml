@@ -1,8 +1,0 @@
-version: 1.0.{build}
-os: Visual Studio 2019
-build_script:
-- gradlew.bat -is nunit nugetPack
-test: off
-artifacts:
-  - path: 'build\distributions\*.nupkg'
-    name: Nuget
