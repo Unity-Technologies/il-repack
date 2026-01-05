@@ -233,6 +233,9 @@ namespace ILRepacking
         {
             var assembly = ResolveBase(ref name, parameters);
             if (assembly != null) return assembly;
+            
+            if (all_core_paths == null)
+                FindCoreSdkFolders();
 
             assembly = SearchDirectoryCheckVersion(name, all_core_paths, parameters);
             if (assembly != null)

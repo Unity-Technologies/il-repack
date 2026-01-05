@@ -31,6 +31,7 @@ namespace ILRepacking
         private readonly ILogger _logger;
         private readonly Dictionary<string, AssemblyGroup> _assemblyToGroupMap = new Dictionary<string, AssemblyGroup>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _outputAssemblyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<AssemblyDefinition> _alreadyMergedAssemblies = new List<AssemblyDefinition>();
         private List<AssemblyGroup> _sortedGroups;
 
         public MultiRepackOrchestrator(MultiRepackConfiguration config, ILogger logger)
@@ -74,20 +75,22 @@ namespace ILRepacking
                     var group = _sortedGroups[i];
                     _logger.Info($"Processing group {i + 1}/{_sortedGroups.Count}: {group.Name ?? group.OutputAssembly}");
                     
-                    PerformGroupRepack(group);
+                    var mergedAssemblies = PerformGroupRepack(group);
                     
                     // Track the output assembly for reference rewriting
-                    foreach (var inputAssembly in group.InputAssemblies)
+                    foreach (var assembly in mergedAssemblies)
                     {
-                        var assemblyName = Path.GetFileNameWithoutExtension(inputAssembly);
+                        var assemblyName = assembly.Name.Name;
                         _outputAssemblyMap[assemblyName] = group.OutputAssembly;
                     }
                     
                     // Rewrite references in the just-merged assembly to point to previously merged assemblies
-                    if (_outputAssemblyMap.Count > group.InputAssemblies.Count)
+                    if (i > 0)
                     {
                         RewriteAssemblyReferences(group.OutputAssembly);
                     }
+                    
+                    _alreadyMergedAssemblies.AddRange(mergedAssemblies);
                 }
 
                 _logger.Info($"Multi-assembly repack completed in {timer.Elapsed}");
@@ -226,7 +229,7 @@ namespace ILRepacking
             return dependencies;
         }
 
-        private void PerformGroupRepack(AssemblyGroup group)
+        private IList<AssemblyDefinition> PerformGroupRepack(AssemblyGroup group)
         {
             var options = CreateRepackOptions(group);
             
@@ -236,14 +239,16 @@ namespace ILRepacking
                 // that can redirect references to merged assemblies
                 if (_outputAssemblyMap.Count > 0)
                 {
-                    SetupReferenceRedirection(repack);
+                    SetupReferenceRedirection(repack.GlobalAssemblyResolver);
                 }
 
                 repack.Repack();
+
+                return repack.MergedAssemblies;
             }
         }
 
-        private void SetupReferenceRedirection(ILRepack repack)
+        private void SetupReferenceRedirection(RepackAssemblyResolver resolver)
         {
             // Register the already-merged assemblies with the resolver
             // and add their directories to the search path
@@ -262,16 +267,16 @@ namespace ILRepacking
                         var outputDir = Path.GetDirectoryName(outputPath);
                         if (!string.IsNullOrEmpty(outputDir) && addedDirectories.Add(outputDir))
                         {
-                            repack.GlobalAssemblyResolver.AddSearchDirectory(outputDir);
+                            resolver.AddSearchDirectory(outputDir);
                         }
                         
                         // Read and register the merged assembly
                         var assembly = AssemblyDefinition.ReadAssembly(outputPath, new ReaderParameters
                         {
-                            AssemblyResolver = repack.GlobalAssemblyResolver,
+                            AssemblyResolver = resolver,
                             ReadingMode = ReadingMode.Deferred
                         });
-                        repack.GlobalAssemblyResolver.RegisterAssembly(assembly);
+                        resolver.RegisterAssembly(assembly);
                         
                         _logger.Verbose($"Registered merged assembly: {inputAssemblyName} -> {Path.GetFileName(outputPath)}");
                     }
@@ -398,7 +403,21 @@ namespace ILRepacking
 
             try
             {
-                var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
+                var resolver = new RepackAssemblyResolver();
+                resolver.Mode = AssemblyResolverMode.Core;
+                
+                foreach (var dir in _config.GlobalOptions.SearchDirectories)
+                    resolver.AddSearchDirectory(dir);
+                SetupReferenceRedirection(resolver);
+                foreach (var alreadyMergedAssembly in _alreadyMergedAssemblies) 
+                    resolver.RegisterAssembly(alreadyMergedAssembly);
+
+                var assembly = AssemblyDefinition.ReadAssembly(assemblyPath, new ReaderParameters(ReadingMode.Immediate)
+                {
+                    InMemory = true,
+                    AssemblyResolver = resolver
+                });
+                
                 bool modified = false;
 
                 // Check each assembly reference
@@ -442,7 +461,8 @@ namespace ILRepacking
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Failed to rewrite references in {assemblyPath}: {ex.Message}");
+                _logger.Error($"Failed to rewrite references in {assemblyPath}: {ex.Message}");
+                throw;
             }
         }
 
