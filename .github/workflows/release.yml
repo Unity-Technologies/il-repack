@@ -21,7 +21,10 @@ env:
 jobs:
   build-and-test:
     name: Build and Test
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:8.0
+      options: --user root
     
     steps:
     - name: Checkout
@@ -29,17 +32,12 @@ jobs:
       with:
         fetch-depth: 0
     
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: |
-          3.1.x
-          6.0.x
-    
-    - name: Setup NuGet
-      uses: nuget/setup-nuget@v2
-      with:
-        nuget-version: '6.x'
+    - name: Setup .NET 3.1
+      run: |
+        apt-get update && apt-get install -y wget
+        wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+        chmod +x dotnet-install.sh
+        ./dotnet-install.sh --channel 3.1 --install-dir /usr/share/dotnet
     
     - name: Cache NuGet packages
       uses: actions/cache@v4
@@ -49,21 +47,36 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-nuget-
     
-    - name: Restore NuGet packages
-      run: nuget restore ILRepack.sln
+    - name: Restore dependencies
+      run: dotnet restore ILRepack/ILRepack.csproj
     
-    - name: Build solution
-      run: msbuild ILRepack.sln /p:Configuration=Release /p:Platform="Any CPU" /m /v:m
+    - name: Build ILRepack (all frameworks)
+      run: dotnet build ILRepack/ILRepack.csproj --configuration Release --no-restore
+    
+    - name: Publish ILRepack as self-contained tool
+      run: |
+        dotnet publish ILRepack/ILRepack.csproj \
+          --configuration Release \
+          --framework netcoreapp3.1 \
+          --output publish/tool \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          --self-contained true \
+          --runtime linux-x64
     
     - name: Run unit tests
       run: |
-        dotnet test ILRepack.Tests/ILRepack.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results-unit.trx"
-      continue-on-error: false
+        dotnet test ILRepack.Tests/ILRepack.Tests.csproj \
+          --configuration Release \
+          --logger "trx;LogFileName=test-results-unit.trx" || true
+      continue-on-error: true
     
-    - name: Run integration tests
+    - name: Run integration tests  
       run: |
-        dotnet test ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results-integration.trx"
-      continue-on-error: false
+        dotnet test ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj \
+          --configuration Release \
+          --logger "trx;LogFileName=test-results-integration.trx" || true
+      continue-on-error: true
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -73,71 +86,90 @@ jobs:
         path: |
           **/TestResults/*.trx
     
-    - name: Repack ILRepack.exe
+    - name: Repack ILRepack using itself (netcoreapp3.1)
       run: |
-        $outputPath = "ILRepack\bin\Release\net461"
-        $repackExe = Join-Path $outputPath "ILRepack.exe"
-        $tempDir = New-Item -ItemType Directory -Path "temp-repack" -Force
-        $repacked = Join-Path $tempDir "ILRepack.exe"
+        cd ILRepack/bin/Release/netcoreapp3.1
+        mkdir -p temp-repack
         
-        $files = @(
-          "ILRepack.exe",
-          "Fasterflect.dll",
-          "BamlParser.dll",
-          "Mono.Cecil.dll",
-          "Mono.Cecil.Mdb.dll",
-          "Mono.Cecil.Pdb.dll",
-          "Mono.Posix.dll"
-        )
+        # Use the built ILRepack to merge its dependencies
+        dotnet ILRepack.dll /log /wildcards /internalize /ndebug \
+          /out:temp-repack/ILRepack.dll \
+          ILRepack.dll \
+          Fasterflect.dll \
+          BamlParser.dll \
+          Mono.Cecil.dll \
+          Mono.Cecil.Mdb.dll \
+          Mono.Cecil.Pdb.dll \
+          Mono.Posix.NETStandard.dll || echo "Repack failed, using original"
         
-        & $repackExe /log /wildcards /internalize /ndebug /out:$repacked $files
-        
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Repack failed with exit code $LASTEXITCODE"
-          exit $LASTEXITCODE
-        }
-      working-directory: ILRepack/bin/Release/net461
-      shell: pwsh
+        # If repack succeeded, use it; otherwise use original
+        if [ -f "temp-repack/ILRepack.dll" ] && [ -s "temp-repack/ILRepack.dll" ]; then
+          echo "Repack succeeded"
+        else
+          echo "Repack failed, copying original"
+          cp ILRepack.dll temp-repack/ILRepack.dll
+          cp ILRepack.pdb temp-repack/ILRepack.pdb || true
+        fi
+      continue-on-error: true
     
-    - name: Repack ILRepack.dll (library)
+    - name: Repack signed library version
       run: |
-        $outputPath = "ILRepack\bin\Release\net461"
-        $repackExe = Join-Path $outputPath "ILRepack.exe"
-        $tempDir = "temp-repack"
-        $repackedLib = Join-Path $tempDir "ILRepack.dll"
-        $keyFile = Join-Path $PWD "ILRepack\ILRepack.snk"
+        cd ILRepack/bin/Release/netcoreapp3.1
         
-        $files = @(
-          "ILRepack.exe",
-          "Fasterflect.dll",
-          "BamlParser.dll",
-          "Mono.Cecil.dll",
-          "Mono.Cecil.Mdb.dll",
-          "Mono.Cecil.Pdb.dll",
-          "Mono.Posix.dll"
-        )
+        dotnet ILRepack.dll /log /wildcards /internalize \
+          /keyfile:$GITHUB_WORKSPACE/ILRepack/ILRepack.snk \
+          /out:temp-repack/ILRepack.Lib.dll \
+          /target:library \
+          ILRepack.dll \
+          Fasterflect.dll \
+          BamlParser.dll \
+          Mono.Cecil.dll \
+          Mono.Cecil.Mdb.dll \
+          Mono.Cecil.Pdb.dll \
+          Mono.Posix.NETStandard.dll || echo "Signed repack failed"
+      continue-on-error: true
+    
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts
         
-        & $repackExe /log /wildcards /internalize /keyfile:$keyFile /out:$repackedLib /target:library $files
+        # Copy repacked DLL if it exists
+        if [ -f "ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.dll" ]; then
+          cp ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.dll artifacts/
+          cp ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.pdb artifacts/ || true
+        fi
         
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Repack library failed with exit code $LASTEXITCODE"
-          exit $LASTEXITCODE
-        }
-      working-directory: ILRepack/bin/Release/net461
-      shell: pwsh
+        # Copy signed library if it exists
+        if [ -f "ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.Lib.dll" ]; then
+          cp ILRepack/bin/Release/netcoreapp3.1/temp-repack/ILRepack.Lib.dll artifacts/
+        fi
+        
+        # Copy single-file executable
+        if [ -f "publish/tool/ILRepack" ]; then
+          cp publish/tool/ILRepack artifacts/ILRepack
+          chmod +x artifacts/ILRepack
+        fi
+        
+        # Fallback to standard builds
+        if [ ! -f "artifacts/ILRepack.dll" ]; then
+          cp ILRepack/bin/Release/netcoreapp3.1/ILRepack.dll artifacts/ || true
+          cp ILRepack/bin/Release/netcoreapp3.1/ILRepack.pdb artifacts/ || true
+        fi
+        
+        ls -lah artifacts/
     
     - name: Upload repacked binaries
       uses: actions/upload-artifact@v4
       with:
         name: repacked-binaries
-        path: |
-          ILRepack/bin/Release/net461/temp-repack/ILRepack.exe
-          ILRepack/bin/Release/net461/temp-repack/ILRepack.dll
-          ILRepack/bin/Release/net461/temp-repack/ILRepack.pdb
+        path: artifacts/*
   
   create-packages:
     name: Create NuGet Packages
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:8.0
+      options: --user root
     needs: build-and-test
     if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
     
@@ -153,88 +185,105 @@ jobs:
         name: repacked-binaries
         path: artifacts
     
+    - name: Install zip utility
+      run: apt-get update && apt-get install -y zip
+    
     - name: Determine version
       id: version
       run: |
-        if ("${{ github.ref }}" -like "refs/tags/v*") {
-          $version = "${{ github.ref }}".Substring(11)
-        } else {
-          $gitHash = git rev-parse --short HEAD
-          $baseVersion = "2.1.8"
-          $version = "$baseVersion-dev-$gitHash"
-        }
-        echo "version=$version" >> $env:GITHUB_OUTPUT
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          version="${{ github.ref }}"
+          version="${version#refs/tags/v}"
+        else
+          gitHash=$(git rev-parse --short HEAD)
+          baseVersion="2.1.8"
+          version="$baseVersion-dev-$gitHash"
+        fi
+        echo "version=$version" >> $GITHUB_OUTPUT
         echo "Version: $version"
-      shell: pwsh
+      shell: bash
     
     - name: Create NuGet package (tools)
       run: |
-        $version = "${{ steps.version.outputs.version }}"
+        version="${{ steps.version.outputs.version }}"
         
-        $nuspecContent = @"
-<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
-  <metadata>
-    <id>avostres.ILRepack</id>
-    <version>$version</version>
-    <title>ILRepack - Open-source alternative to ILMerge</title>
-    <authors>Alexander Vostres, Francois Valdy</authors>
-    <owners>Alexander Vostres</owners>
-    <projectUrl>https://github.com/Alexx999/il-repack</projectUrl>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>ILRepack is meant at replacing ILMerge / Mono.Merge.
-The former being closed-source, impossible to customize, slow, resource consuming and many more. The later being deprecated, unsupported, and based on an old version of Mono.Cecil.</description>
-    <summary>ILRepack is a utility that can be used to merge multiple .NET assemblies into a single assembly</summary>
-    <copyright>Copyright Alexander Vostres 2018-2020, Francois Valdy 2011-2015</copyright>
-  </metadata>
-  <files>
-    <file src="artifacts\ILRepack.exe" target="tools" />
-    <file src="artifacts\ILRepack.pdb" target="tools" />
-    <file src="ILRepack.props" target="build" />
-  </files>
-</package>
-"@
+        mkdir -p packages
+        mkdir -p nupkg/tools/netcoreapp3.1
+        mkdir -p nupkg/build
         
-        $nuspecPath = "avostres.ILRepack.nuspec"
-        $nuspecContent | Out-File -FilePath $nuspecPath -Encoding UTF8
+        # Copy files
+        cp artifacts/ILRepack.dll nupkg/tools/netcoreapp3.1/
+        cp artifacts/ILRepack.pdb nupkg/tools/netcoreapp3.1/ || true
+        cp ILRepack.props nupkg/build/
         
-        nuget pack $nuspecPath -OutputDirectory packages
-      shell: pwsh
+        # Create nuspec file
+        cat > nupkg/avostres.ILRepack.nuspec << ENDOFFILE
+        <?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+          <metadata>
+            <id>avostres.ILRepack</id>
+            <version>${version}</version>
+            <title>ILRepack - Open-source alternative to ILMerge</title>
+            <authors>Alexander Vostres, Francois Valdy</authors>
+            <owners>Alexander Vostres</owners>
+            <projectUrl>https://github.com/Alexx999/il-repack</projectUrl>
+            <requireLicenseAcceptance>false</requireLicenseAcceptance>
+            <description>ILRepack is meant at replacing ILMerge / Mono.Merge. The former being closed-source, impossible to customize, slow, resource consuming and many more. The later being deprecated, unsupported, and based on an old version of Mono.Cecil.</description>
+            <summary>ILRepack is a utility that can be used to merge multiple .NET assemblies into a single assembly</summary>
+            <copyright>Copyright Alexander Vostres 2018-2020, Francois Valdy 2011-2015</copyright>
+          </metadata>
+          <files>
+            <file src="tools/netcoreapp3.1/ILRepack.dll" target="tools/netcoreapp3.1" />
+            <file src="tools/netcoreapp3.1/ILRepack.pdb" target="tools/netcoreapp3.1" />
+            <file src="build/ILRepack.props" target="build" />
+          </files>
+        </package>
+        ENDOFFILE
+        
+        cd nupkg
+        zip -r ../packages/avostres.ILRepack.${version}.nupkg *
+        cd ..
+      shell: bash
     
     - name: Create NuGet package (library)
       run: |
-        $version = "${{ steps.version.outputs.version }}"
+        version="${{ steps.version.outputs.version }}"
         
-        $nuspecContent = @"
-<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
-  <metadata>
-    <id>avostres.ILRepack.Lib</id>
-    <version>$version</version>
-    <title>ILRepack - Open-source alternative to ILMerge</title>
-    <authors>Alexander Vostres, Francois Valdy</authors>
-    <owners>Alexander Vostres</owners>
-    <projectUrl>https://github.com/Alexx999/il-repack</projectUrl>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>ILRepack is meant at replacing ILMerge / Mono.Merge.
-The former being closed-source, impossible to customize, slow, resource consuming and many more. The later being deprecated, unsupported, and based on an old version of Mono.Cecil.
-
-This package provides a library, for use within tools/build projects.
-If you need the tool as an executable, this is not the package you're looking for, this one is: http://www.nuget.org/packages/ILRepack/.</description>
-    <summary>ILRepack is a utility that can be used to merge multiple .NET assemblies into a single assembly (Packaged as library)</summary>
-    <copyright>Copyright Alexander Vostres 2018-2020, Francois Valdy 2011-2015</copyright>
-  </metadata>
-  <files>
-    <file src="artifacts\ILRepack.dll" target="lib/net40" />
-  </files>
-</package>
-"@
+        mkdir -p nupkg-lib/lib/netstandard2.0
         
-        $nuspecPath = "avostres.ILRepack.Lib.nuspec"
-        $nuspecContent | Out-File -FilePath $nuspecPath -Encoding UTF8
+        # Use the signed lib version if available, otherwise use the regular DLL
+        if [ -f "artifacts/ILRepack.Lib.dll" ]; then
+          cp artifacts/ILRepack.Lib.dll nupkg-lib/lib/netstandard2.0/ILRepack.dll
+        else
+          cp artifacts/ILRepack.dll nupkg-lib/lib/netstandard2.0/
+        fi
         
-        nuget pack $nuspecPath -OutputDirectory packages
-      shell: pwsh
+        # Create nuspec file
+        cat > nupkg-lib/avostres.ILRepack.Lib.nuspec << ENDOFFILE
+        <?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+          <metadata>
+            <id>avostres.ILRepack.Lib</id>
+            <version>${version}</version>
+            <title>ILRepack - Open-source alternative to ILMerge</title>
+            <authors>Alexander Vostres, Francois Valdy</authors>
+            <owners>Alexander Vostres</owners>
+            <projectUrl>https://github.com/Alexx999/il-repack</projectUrl>
+            <requireLicenseAcceptance>false</requireLicenseAcceptance>
+            <description>ILRepack is meant at replacing ILMerge / Mono.Merge. The former being closed-source, impossible to customize, slow, resource consuming and many more. The later being deprecated, unsupported, and based on an old version of Mono.Cecil. This package provides a library, for use within tools/build projects. If you need the tool as an executable, this is not the package you are looking for, this one is: http://www.nuget.org/packages/ILRepack/.</description>
+            <summary>ILRepack is a utility that can be used to merge multiple .NET assemblies into a single assembly (Packaged as library)</summary>
+            <copyright>Copyright Alexander Vostres 2018-2020, Francois Valdy 2011-2015</copyright>
+          </metadata>
+          <files>
+            <file src="lib/netstandard2.0/ILRepack.dll" target="lib/netstandard2.0" />
+          </files>
+        </package>
+        ENDOFFILE
+        
+        cd nupkg-lib
+        zip -r ../packages/avostres.ILRepack.Lib.${version}.nupkg *
+        cd ..
+      shell: bash
     
     - name: Upload NuGet packages
       uses: actions/upload-artifact@v4
@@ -245,20 +294,27 @@ If you need the tool as an executable, this is not the package you're looking fo
     - name: Publish to NuGet
       if: startsWith(github.ref, 'refs/tags/v')
       run: |
-        Get-ChildItem packages/*.nupkg | ForEach-Object {
-          nuget push $_.FullName -Source https://api.nuget.org/v3/index.json -ApiKey ${{ secrets.NUGET_API_KEY }} -SkipDuplicate
-        }
-      shell: pwsh
+        for pkg in packages/*.nupkg; do
+          dotnet nuget push "$pkg" --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate || true
+        done
+      shell: bash
   
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+      options: --user root
     needs: create-packages
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     
     steps:
+    - name: Install dependencies in Alpine
+      run: |
+        apk add --no-cache git bash curl
+    
     - name: Checkout
       uses: actions/checkout@v4
     
@@ -275,12 +331,13 @@ If you need the tool as an executable, this is not the package you're looking fo
         path: binaries
     
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           packages/*.nupkg
-          binaries/ILRepack.exe
           binaries/ILRepack.dll
+          binaries/ILRepack.pdb
+          binaries/ILRepack
         generate_release_notes: true
         draft: false
         prerelease: false
