@@ -52,7 +52,6 @@ jobs:
           --configuration Release \
           --framework net8.0 \
           --output publish/tool \
-          -p:PublishSingleFile=true \
           --self-contained false
     
     - name: Restore for unit tests
@@ -138,8 +137,7 @@ jobs:
         # Copy signed library (must exist)
         cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll artifacts/
         
-        # Copy published framework-dependent files (must exist)
-        cp publish/tool/ILRepack.dll artifacts/ILRepack-published.dll
+        # Copy published framework-dependent runtime config files (must exist)
         cp publish/tool/ILRepack.runtimeconfig.json artifacts/
         cp publish/tool/ILRepack.deps.json artifacts/
         
@@ -320,8 +318,9 @@ jobs:
           packages/*.nupkg
           binaries/ILRepack.dll
           binaries/ILRepack.pdb
-          binaries/ILRepack
+          binaries/ILRepack.Lib.dll
           binaries/ILRepack.runtimeconfig.json
+          binaries/ILRepack.deps.json
         generate_release_notes: true
         draft: false
         prerelease: false
