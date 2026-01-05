@@ -55,28 +55,26 @@ jobs:
           -p:PublishSingleFile=true \
           --self-contained false
     
-    - name: Restore test project dependencies
+    - name: Restore for unit tests
       run: |
         dotnet restore ILRepack.Tests/ILRepack.Tests.csproj
-        dotnet restore ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj
     
     - name: Run unit tests
       run: |
         dotnet test ILRepack.Tests/ILRepack.Tests.csproj \
           --configuration Release \
-          --logger "trx;LogFileName=test-results-unit.trx" || true
-      continue-on-error: true
+          --logger "trx;LogFileName=test-results-unit.trx"
     
-    - name: Restore dotnet tools for integration tests
+    - name: Restore for integration tests
       run: |
+        dotnet restore ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj
         dotnet tool restore --tool-manifest ILRepack.IntegrationTests/.config/dotnet-tools.json
     
     - name: Run integration tests  
       run: |
         dotnet test ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj \
           --configuration Release \
-          --logger "trx;LogFileName=test-results-integration.trx" || true
-      continue-on-error: true
+          --logger "trx;LogFileName=test-results-integration.trx"
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -100,15 +98,13 @@ jobs:
           Mono.Cecil.Mdb.dll \
           Mono.Cecil.Pdb.dll
         
-        # If repack succeeded, use it; otherwise use original
-        if [ -f "temp-repack/ILRepack.dll" ] && [ -s "temp-repack/ILRepack.dll" ]; then
-          echo "Repack succeeded"
-        else
-          echo "Repack failed, copying original"
-          cp ILRepack.dll temp-repack/ILRepack.dll
-          cp ILRepack.pdb temp-repack/ILRepack.pdb || true
+        # Verify repack succeeded
+        if [ ! -f "temp-repack/ILRepack.dll" ] || [ ! -s "temp-repack/ILRepack.dll" ]; then
+          echo "ERROR: Repack failed to produce ILRepack.dll"
+          exit 1
         fi
-      continue-on-error: true
+        
+        echo "Repack succeeded"
     
     - name: Repack signed library version
       run: |
@@ -121,37 +117,31 @@ jobs:
           Fasterflect.dll \
           Mono.Cecil.dll \
           Mono.Cecil.Mdb.dll \
-          Mono.Cecil.Pdb.dll || echo "Signed repack failed"
-      continue-on-error: true
+          Mono.Cecil.Pdb.dll
+        
+        # Verify repack succeeded
+        if [ ! -f "temp-repack/ILRepack.Lib.dll" ] || [ ! -s "temp-repack/ILRepack.Lib.dll" ]; then
+          echo "ERROR: Library repack failed to produce ILRepack.Lib.dll"
+          exit 1
+        fi
+        
+        echo "Library repack succeeded"
     
     - name: Prepare artifacts
       run: |
         mkdir -p artifacts
         
-        # Copy repacked DLL if it exists
-        if [ -f "ILRepack/bin/Release/net8.0/temp-repack/ILRepack.dll" ]; then
-          cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.dll artifacts/
-          cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.pdb artifacts/ || true
-        fi
+        # Copy repacked DLL (must exist)
+        cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.dll artifacts/
+        cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.pdb artifacts/
         
-        # Copy signed library if it exists
-        if [ -f "ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll" ]; then
-          cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll artifacts/
-        fi
+        # Copy signed library (must exist)
+        cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll artifacts/
         
-        # Copy single-file executable
-        if [ -f "publish/tool/ILRepack" ]; then
-          cp publish/tool/ILRepack artifacts/ILRepack
-          chmod +x artifacts/ILRepack
-          # Copy runtimeconfig.json for framework-dependent app
-          cp publish/tool/ILRepack.runtimeconfig.json artifacts/ || true
-        fi
-        
-        # Fallback to standard builds
-        if [ ! -f "artifacts/ILRepack.dll" ]; then
-          cp ILRepack/bin/Release/net8.0/ILRepack.dll artifacts/ || true
-          cp ILRepack/bin/Release/net8.0/ILRepack.pdb artifacts/ || true
-        fi
+        # Copy published framework-dependent files (must exist)
+        cp publish/tool/ILRepack.dll artifacts/ILRepack-published.dll
+        cp publish/tool/ILRepack.runtimeconfig.json artifacts/
+        cp publish/tool/ILRepack.deps.json artifacts/
         
         ls -lah artifacts/
     
@@ -208,9 +198,9 @@ jobs:
         mkdir -p nupkg/tools/net8.0
         mkdir -p nupkg/build
         
-        # Copy files
+        # Copy files (must exist)
         cp artifacts/ILRepack.dll nupkg/tools/net8.0/
-        cp artifacts/ILRepack.pdb nupkg/tools/net8.0/ || true
+        cp artifacts/ILRepack.pdb nupkg/tools/net8.0/
         cp ILRepack.props nupkg/build/
         
         # Create nuspec file
@@ -248,12 +238,8 @@ jobs:
         
         mkdir -p nupkg-lib/lib/netstandard2.0
         
-        # Use the signed lib version if available, otherwise use the regular DLL
-        if [ -f "artifacts/ILRepack.Lib.dll" ]; then
-          cp artifacts/ILRepack.Lib.dll nupkg-lib/lib/netstandard2.0/ILRepack.dll
-        else
-          cp artifacts/ILRepack.dll nupkg-lib/lib/netstandard2.0/
-        fi
+        # Use the library repack version (must exist)
+        cp artifacts/ILRepack.Lib.dll nupkg-lib/lib/netstandard2.0/ILRepack.dll
         
         # Create nuspec file
         cat > nupkg-lib/avostres.ILRepack.Lib.nuspec << ENDOFFILE
@@ -292,7 +278,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/v')
       run: |
         for pkg in packages/*.nupkg; do
-          dotnet nuget push "$pkg" --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate || true
+          dotnet nuget push "$pkg" --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
         done
       shell: bash
   
