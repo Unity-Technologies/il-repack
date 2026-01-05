@@ -143,6 +143,8 @@ jobs:
         if [ -f "publish/tool/ILRepack" ]; then
           cp publish/tool/ILRepack artifacts/ILRepack
           chmod +x artifacts/ILRepack
+          # Copy runtimeconfig.json for framework-dependent app
+          cp publish/tool/ILRepack.runtimeconfig.json artifacts/ || true
         fi
         
         # Fallback to standard builds
@@ -333,6 +335,7 @@ jobs:
           binaries/ILRepack.dll
           binaries/ILRepack.pdb
           binaries/ILRepack
+          binaries/ILRepack.runtimeconfig.json
         generate_release_notes: true
         draft: false
         prerelease: false
