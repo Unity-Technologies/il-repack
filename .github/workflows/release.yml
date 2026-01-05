@@ -46,16 +46,14 @@ jobs:
     - name: Build ILRepack (all frameworks)
       run: dotnet build ILRepack/ILRepack.csproj --configuration Release --no-restore
     
-    - name: Publish ILRepack as self-contained tool
+    - name: Publish ILRepack as framework-dependent tool
       run: |
         dotnet publish ILRepack/ILRepack.csproj \
           --configuration Release \
           --framework net8.0 \
           --output publish/tool \
           -p:PublishSingleFile=true \
-          -p:PublishTrimmed=false \
-          --self-contained true \
-          --runtime linux-x64
+          --self-contained false
     
     - name: Restore test project dependencies
       run: |
