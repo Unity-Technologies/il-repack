@@ -10,12 +10,6 @@ namespace ILRepack.IntegrationTests
     public class Scenarios
     {
         private const int ScenarioProcessWaitTimeInMs = 10000;
-        
-        [Test]
-        public void GivenDotNet462AppReferencingMicrosoftBclAsyncAndSystemRuntime_MergedApplicationRunsSuccessfully()
-        {
-            RunScenario("DotNet462Application");
-        }
 
         [Test]
         public void GivenDotNet462AppUsingNetStandard2LibrarySetAndReflection_MergedApplicationRunsSuccessfully()

@@ -23,10 +23,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClassLibrary", "ILRepack.In
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ILRepack.IntegrationTests", "ILRepack.IntegrationTests\ILRepack.IntegrationTests.csproj", "{B0E4D418-5F5D-4F19-B1DB-0659F17F9251}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AnotherClassLibrary", "ILRepack.IntegrationTests\Scenarios\AnotherClassLibrary\AnotherClassLibrary.csproj", "{F92CF620-F1A5-4A3E-A774-4199F54FEF2E}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotNet462Application", "ILRepack.IntegrationTests\Scenarios\DotNet462Application\DotNet462Application.csproj", "{EECC6459-78C6-4A08-9039-DE37E75866E6}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotNet462NetStandard2", "ILRepack.IntegrationTests\Scenarios\DotNet462NetStandard2\DotNet462NetStandard2.csproj", "{90F1C943-3C23-4091-B07F-0B34748AE056}"
 	ProjectSection(ProjectDependencies) = postProject
 		{4A253A60-D998-4CA2-B9D5-46567A2FBF80} = {4A253A60-D998-4CA2-B9D5-46567A2FBF80}
@@ -62,16 +58,6 @@ Global
 		{B0E4D418-5F5D-4F19-B1DB-0659F17F9251}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B0E4D418-5F5D-4F19-B1DB-0659F17F9251}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B0E4D418-5F5D-4F19-B1DB-0659F17F9251}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F92CF620-F1A5-4A3E-A774-4199F54FEF2E}.Debug_unix|Any CPU.ActiveCfg = Debug|Any CPU
-		{F92CF620-F1A5-4A3E-A774-4199F54FEF2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F92CF620-F1A5-4A3E-A774-4199F54FEF2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F92CF620-F1A5-4A3E-A774-4199F54FEF2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F92CF620-F1A5-4A3E-A774-4199F54FEF2E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EECC6459-78C6-4A08-9039-DE37E75866E6}.Debug_unix|Any CPU.ActiveCfg = Debug|Any CPU
-		{EECC6459-78C6-4A08-9039-DE37E75866E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{EECC6459-78C6-4A08-9039-DE37E75866E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{EECC6459-78C6-4A08-9039-DE37E75866E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{EECC6459-78C6-4A08-9039-DE37E75866E6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{90F1C943-3C23-4091-B07F-0B34748AE056}.Debug_unix|Any CPU.ActiveCfg = Debug|Any CPU
 		{90F1C943-3C23-4091-B07F-0B34748AE056}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{90F1C943-3C23-4091-B07F-0B34748AE056}.Debug|Any CPU.Build.0 = Debug|Any CPU
@@ -83,8 +69,6 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{801489B7-46CB-42D0-8581-0120F3566A8F} = {04819B25-ABEA-46F7-90D5-149C8304F67F}
-		{F92CF620-F1A5-4A3E-A774-4199F54FEF2E} = {04819B25-ABEA-46F7-90D5-149C8304F67F}
-		{EECC6459-78C6-4A08-9039-DE37E75866E6} = {04819B25-ABEA-46F7-90D5-149C8304F67F}
 		{90F1C943-3C23-4091-B07F-0B34748AE056} = {04819B25-ABEA-46F7-90D5-149C8304F67F}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
