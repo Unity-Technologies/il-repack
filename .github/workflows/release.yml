@@ -112,7 +112,6 @@ jobs:
         cd ILRepack/bin/Release/net8.0
         
         dotnet ILRepack.dll /log /wildcards /internalize \
-          /keyfile:$GITHUB_WORKSPACE/ILRepack/ILRepack.snk \
           /out:temp-repack/ILRepack.Lib.dll \
           /target:library \
           ILRepack.dll \
