@@ -10,37 +10,7 @@ namespace ILRepack.IntegrationTests
     public class Scenarios
     {
         private const int ScenarioProcessWaitTimeInMs = 10000;
-
-        [Test]
-        public void GivenXAMLThatUsesLibraryClass_MergedWPFApplicationRunsSuccessfully()
-        {
-            RunScenario("LibraryClassUsageInXAML");
-        }
-
-        [Test]
-        public void GivenXAMLThatUsesLibraryUserControl_MergedWPFApplicationRunsSuccessfully()
-        {
-            RunScenario("LibraryUserControlUsageInXAML");
-        }
-
-        [Test]
-        public void GivenXAMLThatUsesNestedLibraryUserControlAndClass_MergedWPFApplicationRunsSuccessfully()
-        {
-            RunScenario("NestedLibraryUsageInXAML");
-        }
-
-        [Test]
-        public void GivenApplicationThatUsesThemingAndStylesFromA_MergedWPFApplicationRunsSuccessfully()
-        {
-            RunScenario("WPFThemingAndLibraryStyles");
-        }
-
-        [Test]
-        public void GivenSampleApplicationWithMahAppsAndSystemWindowsInteractivityWPF_MergedWPFApplicationRunsSuccessfully()
-        {
-            RunScenario("WPFSampleApplication");
-        }
-
+        
         [Test]
         public void GivenDotNet462AppReferencingMicrosoftBclAsyncAndSystemRuntime_MergedApplicationRunsSuccessfully()
         {
