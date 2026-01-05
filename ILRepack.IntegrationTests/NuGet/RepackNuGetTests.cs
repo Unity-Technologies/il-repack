@@ -72,7 +72,7 @@ namespace ILRepack.IntegrationTests.NuGet
             }
             
             var errorCodes = errors.ToErrorCodes();
-            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.VER_E_STACK_OVERFLOW));
+            Assert.That(errorCodes, Does.Not.Contains(PeverifyHelper.VER_E_STACK_OVERFLOW));
         }
 
         [Test]
@@ -108,8 +108,8 @@ namespace ILRepack.IntegrationTests.NuGet
             }
             
             var errorCodes = errors.ToErrorCodes();
-            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.VER_E_TOKEN_RESOLVE));
-            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.VER_E_TYPELOAD));
+            Assert.That(errorCodes, Does.Not.Contains(PeverifyHelper.VER_E_TOKEN_RESOLVE));
+            Assert.That(errorCodes, Does.Not.Contains(PeverifyHelper.VER_E_TYPELOAD));
         }
 
         [Test]
@@ -131,8 +131,8 @@ namespace ILRepack.IntegrationTests.NuGet
                 var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
                 foreach (var lib in assemblies)
                 {
-                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
-                    fileList.Add(Path.GetFileName(lib.Item1));
+                    TestHelpers.SaveAs(lib.streamProvider(), tempDirectory, lib.normalizedName);
+                    fileList.Add(Path.GetFileName(lib.normalizedName));
                 }
             }
             
@@ -156,8 +156,8 @@ namespace ILRepack.IntegrationTests.NuGet
                 var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
                 foreach (var lib in assemblies)
                 {
-                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
-                    fileList.Add(Path.GetFileName(lib.Item1));
+                    TestHelpers.SaveAs(lib.streamProvider(), tempDirectory, lib.normalizedName);
+                    fileList.Add(Path.GetFileName(lib.normalizedName));
                 }
             }
             
@@ -170,7 +170,7 @@ namespace ILRepack.IntegrationTests.NuGet
             }
             
             var errorCodes = errors.ToErrorCodes();
-            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.META_E_CA_FRIENDS_SN_REQUIRED));
+            Assert.That(errorCodes, Does.Not.Contains(PeverifyHelper.META_E_CA_FRIENDS_SN_REQUIRED));
         }
 
 
@@ -206,7 +206,7 @@ namespace ILRepack.IntegrationTests.NuGet
 
             var expected = GetSrcSrv(Tmp("TfsEngine.pdb"));
             var actual = GetSrcSrv(Tmp("test.pdb"));
-            CollectionAssert.AreEqual(expected, actual);
+            Assert.That(actual, Is.EqualTo(expected));
         }
 
         private static IEnumerable<string> GetSrcSrv(string pdb)
@@ -246,7 +246,7 @@ namespace ILRepack.IntegrationTests.NuGet
 
         private static void AssertSourceLinksAreEquivalent(IEnumerable<string> expectedPdbNames, string actualPdbName)
         {
-            CollectionAssert.AreEquivalent(expectedPdbNames.SelectMany(GetSourceLinks), GetSourceLinks(actualPdbName));
+            Assert.That(GetSourceLinks(actualPdbName), Is.EquivalentTo(expectedPdbNames.SelectMany(GetSourceLinks)));
         }
 
         private static IEnumerable<string> GetSourceLinks(string pdbName)
@@ -280,11 +280,11 @@ namespace ILRepack.IntegrationTests.NuGet
 
         void RepackPlatform(Platform platform, IList<string> list)
         {
-            Assert.IsTrue(list.Count >= platform.Packages.Count(), 
+            Assert.That(list.Count, Is.GreaterThanOrEqualTo(platform.Packages.Count()),
                 "There should be at least the same number of .dlls as the number of packages");
             Console.WriteLine("Merging {0}", string.Join(",",list));
             TestHelpers.DoRepackForCmd(new []{"/out:"+Tmp("test.dll"), "/lib:"+tempDirectory}.Concat(platform.Args).Concat(list.Select(Tmp).OrderBy(x => x)));
-            Assert.IsTrue(File.Exists(Tmp("test.dll")));
+            Assert.That(File.Exists(Tmp("test.dll")));
         }
 
         string Tmp(string file)
@@ -319,7 +319,7 @@ namespace ILRepack.IntegrationTests.NuGet
         {
             Console.WriteLine("Merging {0}", assemblyName);
             TestHelpers.DoRepackForCmd("/out:"+Tmp("test.dll"), Tmp("foo.dll"));
-            Assert.IsTrue(File.Exists(Tmp("test.dll")));
+            Assert.That(File.Exists(Tmp("test.dll")));
         }
     }
 }
