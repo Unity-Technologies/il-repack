@@ -353,7 +353,6 @@ namespace ILRepacking
                     new AttributesRepackStep(Logger, this, _repackImporter, Options),
                     new ReferencesFixStep(Logger, this, _repackImporter, Options),
                     new PublicTypesFixStep(Logger, this, _repackImporter, Options),
-                    new XamlResourcePathPatcherStep(Logger, this),
                     sourceServerDataStep
                 };
 
