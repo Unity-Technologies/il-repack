@@ -1,5 +1,4 @@
-﻿using ILRepack.IntegrationTests.Helpers;
-using ILRepack.IntegrationTests.Peverify;
+﻿using ILRepack.IntegrationTests.Peverify;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
