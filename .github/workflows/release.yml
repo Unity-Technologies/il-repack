@@ -89,7 +89,7 @@ jobs:
         mkdir -p temp-repack
         
         # Use the built ILRepack to merge its dependencies
-        dotnet ILRepack.dll /log /wildcards /internalize /ndebug \
+        dotnet ILRepack.dll /log /wildcards /internalize \
           /out:temp-repack/ILRepack.dll \
           ILRepack.dll \
           Fasterflect.dll \
