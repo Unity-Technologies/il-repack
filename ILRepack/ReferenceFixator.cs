@@ -27,7 +27,6 @@ namespace ILRepacking
     {
         private readonly ILogger _logger;
         private readonly IRepackContext _repackContext;
-        private string targetAssemblyPublicKeyBlobString;
         private readonly HashSet<GenericParameter> fixedGenericParameters = new HashSet<GenericParameter>();
         private bool renameIkvmAttributeReference;
 
@@ -216,31 +215,6 @@ namespace ILRepacking
                         if (sa.HasFields)
                             throw new NotSupportedException();
                         FixReferences(sa.Properties);
-                        if (sa.HasProperties)
-                        {
-                            foreach (var prop in sa.Properties.ToArray())
-                            {
-                                if (prop.Name == "PublicKeyBlob")
-                                {
-                                    if (_repackContext.TargetAssemblyDefinition.Name.HasPublicKey)
-                                    {
-                                        if (targetAssemblyPublicKeyBlobString == null)
-                                            foreach (byte b in _repackContext.TargetAssemblyDefinition.Name.PublicKey)
-                                                targetAssemblyPublicKeyBlobString += b.ToString("X").PadLeft(2, '0');
-                                        if (prop.Argument.Type.FullName != "System.String")
-                                            throw new NotSupportedException("Invalid type of argument, expected string");
-                                        CustomAttributeNamedArgument newProp = new CustomAttributeNamedArgument(prop.Name,
-                                            new CustomAttributeArgument(prop.Argument.Type, targetAssemblyPublicKeyBlobString));
-                                        sa.Properties.Remove(prop);
-                                        sa.Properties.Add(newProp);
-                                    }
-                                    else
-                                    {
-                                        _logger.Warn("SecurityPermission with PublicKeyBlob found but target has no strong name!");
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 if ((_repackContext.TargetAssemblyMainModule.Runtime == TargetRuntime.Net_1_0) || (_repackContext.TargetAssemblyMainModule.Runtime == TargetRuntime.Net_1_1))

@@ -290,7 +290,6 @@ namespace ILRepacking
             }
 
             _mappingHandler = new MappingHandler();
-            bool hadStrongName = PrimaryAssemblyDefinition.Name.HasPublicKey;
 
             ModuleKind kind = PrimaryAssemblyMainModule.Kind;
             if (Options.TargetKind.HasValue)
@@ -337,7 +336,6 @@ namespace ILRepacking
                 TargetAssemblyDefinition.Name.Version = Options.Version;
 
             _lineIndexer = new IKVMLineIndexer(this, Options.LineIndexation);
-            var signingStep = new SigningStep(this, Options);
             var isUnixEnvironment = Environment.OSVersion.Platform == PlatformID.MacOSX || Environment.OSVersion.Platform == PlatformID.Unix;
 
             using (var sourceServerDataStep = GetSourceServerDataStep(isUnixEnvironment))
@@ -345,7 +343,6 @@ namespace ILRepacking
                 List<IRepackStep> repackSteps = new List<IRepackStep>
                 {
                     win32ResourceStep,
-                    signingStep,
                     new ReferencesRepackStep(Logger, this, Options),
                     new TypesRepackStep(Logger, this, _repackImporter, Options),
                     new ResourcesRepackStep(Logger, this, Options),
@@ -362,7 +359,6 @@ namespace ILRepacking
                 
                 var parameters = new WriterParameters
                 {
-                    StrongNameKeyPair = signingStep.KeyPair,
                     WriteSymbols = Options.DebugInfo && PrimaryAssemblyMainModule.SymbolReader != null,
                     SymbolWriterProvider = PrimaryAssemblyMainModule.SymbolReader?.GetWriterProvider(),
                 };
@@ -399,8 +395,6 @@ namespace ILRepacking
                     Logger.Info("Copying permissions from " + PrimaryAssemblyFile);
                     File.SetUnixFileMode(Options.OutputFile, File.GetUnixFileMode(PrimaryAssemblyFile));
                 }
-                if (hadStrongName && !TargetAssemblyDefinition.Name.HasPublicKey)
-                    Options.StrongNameLost = true;
 
                 // nice to have, merge .config (assembly configuration file) & .xml (assembly documentation)
                 ConfigMerger.Process(this);

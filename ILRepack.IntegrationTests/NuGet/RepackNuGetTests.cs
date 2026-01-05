@@ -141,41 +141,6 @@ namespace ILRepack.IntegrationTests.NuGet
 
         [Test]
         [Platform(Include = "win")]
-        public async Task VerifiesMergedSignedAssemblyHasNoUnsignedFriend()
-        {
-            var platform = Platform.From(
-                Package.From("reactiveui-core", "6.5.0")
-                    .WithArtifact(@"lib\net45\ReactiveUI.dll"),
-                Package.From("Splat", "1.6.2")
-                    .WithArtifact(@"lib\net45\Splat.dll"))
-                .WithExtraArgs("/keyfile:../../../ILRepack/ILRepack.snk");
-                
-            var fileList = new List<string>();
-            foreach (var package in platform.Packages)
-            {
-                var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
-                foreach (var lib in assemblies)
-                {
-                    TestHelpers.SaveAs(lib.streamProvider(), tempDirectory, lib.normalizedName);
-                    fileList.Add(Path.GetFileName(lib.normalizedName));
-                }
-            }
-            
-            RepackPlatform(platform, fileList);
-            
-            var errors = await PeverifyHelper.PeverifyAsync(tempDirectory, "test.dll");
-            foreach (var error in errors)
-            {
-                Console.WriteLine(error);
-            }
-            
-            var errorCodes = errors.ToErrorCodes();
-            Assert.That(errorCodes, Does.Not.Contains(PeverifyHelper.META_E_CA_FRIENDS_SN_REQUIRED));
-        }
-
-
-        [Test]
-        [Platform(Include = "win")]
         public async Task VerifiesMergedPdbUnchangedSourceIndexationForTfsIndexation()
         {
             const string LibName = "TfsEngine.dll";

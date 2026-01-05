@@ -64,7 +64,7 @@ repack << {
     }
     exec {
         workingDir = outputPath
-        commandLine = [*executable, '/log', '/wildcards', '/internalize', '/keyfile:'+file('ILRepack/ILRepack.snk'), '/out:'+ext.repackedLib, '/target:library'] + project.ext.repackList
+        commandLine = [*executable, '/log', '/wildcards', '/internalize', '/out:'+ext.repackedLib, '/target:library'] + project.ext.repackList
     }
 }
 

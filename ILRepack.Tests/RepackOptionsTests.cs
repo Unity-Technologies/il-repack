@@ -218,25 +218,6 @@ namespace ILRepack.Tests
         }
 
         [Test]
-        public void WithOptionKeyFileNotSet_WithDelaySign__Parse__ThrowsInvalidOperationException()
-        {
-            commandLine.Setup(cmd => cmd.Modifier("delaysign")).Returns(true);
-            Parse();
-            Assert.Throws<InvalidOperationException>(() => options.Validate());
-        }
-
-        [Test]
-        public void WithOptionKeyContainerSet_WithDelaySign__Parse__NoException()
-        {
-            commandLine.Setup(cmd => cmd.Option("out")).Returns("filename");
-            commandLine.Setup(cmd => cmd.OtherAguments).Returns(new[] { "A", "B", "C" });
-            commandLine.Setup(cmd => cmd.Option("keycontainer")).Returns("containername");
-            commandLine.Setup(cmd => cmd.Modifier("delaysign")).Returns(true);
-            Parse();
-            options.Validate();
-        }
-
-        [Test]
         public void WithAllowMultipleAssign_WithNoCopyAttributes__Parse__ThrowsInvalidOperationException()
         {
             commandLine.Setup(cmd => cmd.Modifier("allowmultiple")).Returns(true);
@@ -261,31 +242,6 @@ namespace ILRepack.Tests
             Parse();
             Assert.That(() => options.Validate(), 
                 Throws.ArgumentException.With.Message.EqualTo("No input files given."));
-        }
-
-        [Test]
-        public void WithNoKeyFile__ParseProperties__ThrowException()
-        {
-            var inputAssemblies = new List<string> { "A", "B", "C" };
-            commandLine.Setup(cmd => cmd.Option("out")).Returns("filename");
-            commandLine.Setup(cmd => cmd.OtherAguments).Returns(inputAssemblies.ToArray());
-            commandLine.Setup(cmd => cmd.Option("keyfile")).Returns("filename");
-            Parse();
-            Assert.That(() => options.Validate(), 
-                Throws.ArgumentException.With.Message.Contains("KeyFile does not exist"));
-        }
-
-        [Test]
-        public void WithNoKeyFileEvenWithKeyContainer__ParseProperties__ThrowException()
-        {
-            var inputAssemblies = new List<string> { "A", "B", "C" };
-            commandLine.Setup(cmd => cmd.Option("out")).Returns("filename");
-            commandLine.Setup(cmd => cmd.OtherAguments).Returns(inputAssemblies.ToArray());
-            commandLine.Setup(cmd => cmd.Option("keyfile")).Returns("filename");
-            commandLine.Setup(cmd => cmd.Option("keycontainer")).Returns("containername");
-            Parse();
-            Assert.That(() => options.Validate(),
-                Throws.ArgumentException.With.Message.Contains("KeyFile does not exist"));
         }
 
         [Test]

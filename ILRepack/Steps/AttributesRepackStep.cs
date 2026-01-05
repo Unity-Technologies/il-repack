@@ -100,16 +100,6 @@ namespace ILRepacking.Steps
                 }
                 return _repackContext.MergedAssemblies.Any(x => x.Name.Name == name);
             });
-            RemoveAttributes<InternalsVisibleToAttribute>(ca =>
-            {
-                var targetIsSigned = (_repackContext.TargetAssemblyMainModule.Attributes & ModuleAttributes.StrongNameSigned) == ModuleAttributes.StrongNameSigned;
-                if (!targetIsSigned)
-                    return false;
-                String name = (string)ca.ConstructorArguments[0].Value;
-                bool isSigned = name.IndexOf(", PublicKey=", StringComparison.Ordinal) != -1 && name.IndexOf(", PublicKey=null", StringComparison.Ordinal) == -1;
-                // remove non-signed refs from signed merged assembly
-                return !isSigned;
-            });
             RemoveAttributes<AssemblyDelaySignAttribute>(_ => true);
             RemoveAttributes<AssemblyKeyFileAttribute>(_ => true);
             RemoveAttributes<AssemblyKeyNameAttribute>(_ => true);
