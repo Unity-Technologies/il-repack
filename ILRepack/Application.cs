@@ -19,9 +19,21 @@ namespace ILRepacking
                     Exit(2);
                 }
 
-                ILRepack repack = new ILRepack(options, logger);
-                repack.Repack();
-                repack.Dispose();
+                // Check if this is multi-repack mode
+                if (options.IsMultiRepack)
+                {
+                    var config = MultiRepackConfiguration.LoadFromFile(options.MultiRepackConfigFile);
+                    using (var orchestrator = new MultiRepackOrchestrator(config, logger))
+                    {
+                        orchestrator.Repack();
+                    }
+                }
+                else
+                {
+                    ILRepack repack = new ILRepack(options, logger);
+                    repack.Repack();
+                    repack.Dispose();
+                }
                 returnCode = 0;
             }
             catch (RepackOptions.InvalidTargetKindException e)
@@ -51,7 +63,9 @@ namespace ILRepacking
         {
             Console.WriteLine($"IL Repack - assembly merging using Mono.Cecil - Version {typeof(ILRepack).Assembly.GetName().Version.ToString(3)}");
             Console.WriteLine(@"Syntax: ILRepack.exe [Options] /out:<path> <path_to_primary> [<other_assemblies> ...]");
+            Console.WriteLine(@"    or: ILRepack.exe [Options] /config:<path_to_json>");
             Console.WriteLine(@" - /help              displays this usage");
+            Console.WriteLine(@" - /config:<path>     use multi-assembly repack mode with JSON configuration file");
             Console.WriteLine(@" - /log:<logfile>     enable logging (to a file, if given) (default is disabled)");
             Console.WriteLine(@" - /ver:M.X.Y.Z       target assembly version");
             Console.WriteLine(@" - /union             merges types with identical names into one");

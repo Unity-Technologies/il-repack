@@ -1,6 +1,3 @@
-[![Build status](https://img.shields.io/appveyor/ci/Alexx999/il-repack.svg?label=build%20windows)](https://ci.appveyor.com/project/Alexx999/il-repack) [![NuGet](https://img.shields.io/nuget/v/ILRepack.svg)](https://www.nuget.org/packages/avostres.ILRepack/) [![GitHub license](https://img.shields.io/github/license/gluck/il-repack.svg)](http://www.apache.org/licenses/LICENSE-2.0)   
-[![Gitter chat](https://img.shields.io/badge/gitter-join%20chat-green.svg)](https://gitter.im/gluck/il-repack)
-
 Introduction
 ============
 
@@ -9,15 +6,7 @@ ILRepack is meant at replacing [ILMerge](http://www.microsoft.com/downloads/deta
 The former being ~~closed-source~~ ([now open-sourced](https://github.com/Microsoft/ILMerge)), impossible to customize, slow, resource consuming and many more.
 The later being deprecated, unsupported, and based on an old version of Mono.Cecil.
 
-Here we're using latest (slightly modified) Cecil sources (0.9), you can find the fork [here](https://github.com/gluck/cecil).
-Mono.Posix is also required (build only, it gets merged afterwards) for executable bit set on target file.
-
-Downloads
-------
-
-You can grab it using [NuGet](http://nuget.org/packages/ILRepack/).
-
-Or if you're old-school (and want to stay like that), this [direct link](http://nuget.org/api/v2/package/ILRepack) will give you the latest nupkg file, which you can open as a zip file.
+This fork is using the latest Cecil, and has been updated to run on .NET 8 and to be buildable/testable/runnable cross-platform. Support for WPF, and older .NET features such as signing the assembly with a strong name, have been stripped out.
 
 Syntax
 ------
@@ -25,8 +14,10 @@ Syntax
 A console application is available (can be used as DLL as well), using same syntax as ILMerge:
 ```
 Syntax: ILRepack.exe [options] /out:<path> <path_to_primary> [<other_assemblies> ...]
+    or: ILRepack.exe [options] /config:<path_to_json>
 
  - /help                displays this usage
+ - /config:<path>       use multi-assembly repack mode with JSON configuration file
  - /log:<logfile>       enable logging (to a file, if given) (default is disabled)
  - /ver:M.X.Y.Z         target assembly version
  - /union               merges types with identical names into one
@@ -56,18 +47,59 @@ Syntax: ILRepack.exe [options] /out:<path> <path_to_primary> [<other_assemblies>
 Note: for compatibility purposes, all options can be specified using '/', '-' or '--' prefix.
 ```
 
+Multi-Assembly Repack Mode
+------
+
+ILRepack now supports merging multiple groups of assemblies into separate output assemblies. This is useful as a 'batch mode' when you want to do many merges, but is also supports automatic reference rewriting. Suppose you have:
+
+```
+Group A: {A1.dll, A2.dll, A3.dll} -> A.dll
+Group B: {B1.dll, B2.dll, B3.dll} -> B.dll
+```
+
+And `B1.dll` references `A1.dll`.
+
+If you just do those two merges as separate operations, then `B.dll` will end up referencing `A1.dll` still. But with this feature, `B.dll` will have any references to `A1.dll`, `A2.dll` or `A3.dll` rewritten to point at `A.dll`.
+
+**Usage:**
+
+Create a JSON configuration file, for example:
+```json
+{
+  "groups": [
+    {
+      "name": "CoreGroup",
+      "inputAssemblies": ["Core.dll", "Utilities.dll"],
+      "outputAssembly": "MyApp.Core.dll"
+    },
+    {
+      "name": "UIGroup",
+      "inputAssemblies": ["UI.dll", "Controls.dll"],
+      "outputAssembly": "MyApp.UI.dll"
+    }
+  ],
+  "globalOptions": {
+    "internalize": true,
+    "debugInfo": true
+  }
+}
+```
+
+Then run:
+```bash
+ILRepack.exe /config:repack-config.json
+```
+
 How to build
 ------
 
-Builds directly from within Visual Studio 2015, or using gradle:
+Builds directly from within Visual Studio 2015, or using dotnet:
 
 ```
 git clone --recursive https://github.com/gluck/il-repack.git
 cd il-repack
-gradlew.bat msbuild
+dotnet build
 ```
-
-(Mono.Posix 3.5-compatible dependency was grabbed from a non-standard nuget repo, it has been commited to git to avoid the dependency on this repo)
 
 TODO
 ------
@@ -77,6 +109,9 @@ TODO
 
 DONE
 ------
+  * Multi-assembly repack mode with reference rewriting
+  * Circular dependency detection for multi-assembly mode
+  * JSON-based configuration for complex merge scenarios
   * PDBs & MDBs should be merged (Thanks Simon)
   * Fixed internal method overriding public one which isn't allowed in the same assembly (Simon)
   * Attribute merge (/copyattrs)

@@ -74,6 +74,7 @@ namespace ILRepacking
         // end of ILMerge-similar attributes
 
         public bool LogVerbose { get; set; }
+        public string MultiRepackConfigFile { get; set; }
         public bool NoRepackRes { get; set; }
         public bool KeepOtherVersionReferences { get; set; }
         public bool LineIndexation { get; set; }
@@ -238,15 +239,33 @@ namespace ILRepacking
                 }
             }
 
+            // Multi-repack configuration file
+            MultiRepackConfigFile = cmd.Option("config");
+
             // everything that doesn't start with a '/' must be a file to merge (verify when loading the files)
             InputAssemblies = cmd.OtherAguments;
         }
+
+        /// <summary>
+        /// Returns true if this is a multi-repack configuration
+        /// </summary>
+        public bool IsMultiRepack => !string.IsNullOrWhiteSpace(MultiRepackConfigFile);
 
         /// <summary>
         /// Validates the options for repack execution, throws upon invalid argument set
         /// </summary>
         internal void Validate()
         {
+            // If multi-repack mode, different validation rules apply
+            if (IsMultiRepack)
+            {
+                if (!string.IsNullOrEmpty(OutputFile))
+                    throw new InvalidOperationException("Option 'out' cannot be used with 'config' (multi-repack mode).");
+                if (InputAssemblies != null && InputAssemblies.Length > 0)
+                    throw new InvalidOperationException("Input assemblies cannot be specified directly with 'config' (multi-repack mode).");
+                return;
+            }
+
             if (AllowMultipleAssemblyLevelAttributes && !CopyAttributes)
                 throw new InvalidOperationException("Option 'allowMultiple' is only valid with 'copyattrs'.");
 
