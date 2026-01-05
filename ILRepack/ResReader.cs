@@ -174,11 +174,6 @@ namespace ILRepacking
             this.dataPos = dataPos;
         }
 
-        public bool IsBamlStream
-        {
-            get { return type == "ResourceTypeCode.Stream" && name != null && name.EndsWith(".baml"); }
-        }
-
         public bool IsString
         {
             get { return type == "ResourceTypeCode.String" || type != null && type.StartsWith("System.String"); }

@@ -27,8 +27,6 @@ A console application is available (can be used as DLL as well), using same synt
 Syntax: ILRepack.exe [options] /out:<path> <path_to_primary> [<other_assemblies> ...]
 
  - /help                displays this usage
- - /keyfile:<path>      specifies a keyfile to sign the output assembly
- - /keycontainer:<name> specifies a key container to sign the output assembly (takes precedence over /keyfile)
  - /log:<logfile>       enable logging (to a file, if given) (default is disabled)
  - /ver:M.X.Y.Z         target assembly version
  - /union               merges types with identical names into one
@@ -42,8 +40,6 @@ Syntax: ILRepack.exe [options] /out:<path> <path_to_primary> [<other_assemblies>
  - /lib:<path>          adds the path to the search directories for referenced assemblies (can be specified multiple times)
  - /internalize         sets all types but the ones from the first assembly 'internal'
  - /renameInternalized  rename all internalized types
- - /delaysign           sets the key, but don't sign the assembly
- - /usefullpublickeyforreferences - NOT IMPLEMENTED
  - /align               - NOT IMPLEMENTED
  - /closed              - NOT IMPLEMENTED
  - /allowdup:Type       allows the specified type for being duplicated in input assemblies
@@ -89,7 +85,6 @@ DONE
   * Add usage / version
   * App.config merge
   * Internalizing types (Simon)
-  * Delay signing (Simon)
   * Target platform selection (Simon)
   * Automatic internal type renaming
 

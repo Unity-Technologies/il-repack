@@ -35,25 +35,25 @@ namespace ILRepack.Tests
         [Test]
         public void WithValidOptionPrefix__GetOption__ReturnNull()
         {
-            string[] arguments = { "--keyfile:file", "--log" };
+            string[] arguments = { "--out:file", "--log" };
             var commandLine = new CommandLine(arguments);
-            var option = commandLine.Option("keyfile");
+            var option = commandLine.Option("out");
             Assert.AreEqual("file", option);
         }
 
         [Test]
         public void WithValidOption__GetOptionWithNameInCaps__ReturnOption()
         {
-            string[] arguments = { "/keyfile:file" };
+            string[] arguments = { "/out:file" };
             var commandLine = new CommandLine(arguments);
-            var option = commandLine.Option("KEYFILE");
+            var option = commandLine.Option("OUT");
             Assert.AreEqual("file", option);
         }
 
         [Test]
         public void WithValidOption__GetOtherOption__ReturnNull()
         {
-            string[] arguments = { "/keyfile:file" };
+            string[] arguments = { "/out:file" };
             var commandLine = new CommandLine(arguments);
             var option = commandLine.Option("union");
             Assert.IsNull(option);

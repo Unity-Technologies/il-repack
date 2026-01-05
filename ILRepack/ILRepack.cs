@@ -23,7 +23,6 @@ using System.Text.RegularExpressions;
 using ILRepacking.Steps;
 using Mono.Cecil;
 using Mono.Cecil.PE;
-using Mono.Unix.Native;
 using ILRepacking.Mixins;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Diagnostics;
@@ -291,7 +290,6 @@ namespace ILRepacking
             }
 
             _mappingHandler = new MappingHandler();
-            bool hadStrongName = PrimaryAssemblyDefinition.Name.HasPublicKey;
 
             ModuleKind kind = PrimaryAssemblyMainModule.Kind;
             if (Options.TargetKind.HasValue)
@@ -338,7 +336,6 @@ namespace ILRepacking
                 TargetAssemblyDefinition.Name.Version = Options.Version;
 
             _lineIndexer = new IKVMLineIndexer(this, Options.LineIndexation);
-            var signingStep = new SigningStep(this, Options);
             var isUnixEnvironment = Environment.OSVersion.Platform == PlatformID.MacOSX || Environment.OSVersion.Platform == PlatformID.Unix;
 
             using (var sourceServerDataStep = GetSourceServerDataStep(isUnixEnvironment))
@@ -346,14 +343,12 @@ namespace ILRepacking
                 List<IRepackStep> repackSteps = new List<IRepackStep>
                 {
                     win32ResourceStep,
-                    signingStep,
                     new ReferencesRepackStep(Logger, this, Options),
                     new TypesRepackStep(Logger, this, _repackImporter, Options),
                     new ResourcesRepackStep(Logger, this, Options),
                     new AttributesRepackStep(Logger, this, _repackImporter, Options),
                     new ReferencesFixStep(Logger, this, _repackImporter, Options),
                     new PublicTypesFixStep(Logger, this, _repackImporter, Options),
-                    new XamlResourcePathPatcherStep(Logger, this),
                     sourceServerDataStep
                 };
 
@@ -364,7 +359,6 @@ namespace ILRepacking
                 
                 var parameters = new WriterParameters
                 {
-                    StrongNameKeyPair = signingStep.KeyPair,
                     WriteSymbols = Options.DebugInfo && PrimaryAssemblyMainModule.SymbolReader != null,
                     SymbolWriterProvider = PrimaryAssemblyMainModule.SymbolReader?.GetWriterProvider(),
                 };
@@ -398,13 +392,9 @@ namespace ILRepacking
                 // the primary assembly
                 if (isUnixEnvironment)
                 {
-                    Stat stat;
                     Logger.Info("Copying permissions from " + PrimaryAssemblyFile);
-                    Syscall.stat(PrimaryAssemblyFile, out stat);
-                    Syscall.chmod(Options.OutputFile, stat.st_mode);
+                    File.SetUnixFileMode(Options.OutputFile, File.GetUnixFileMode(PrimaryAssemblyFile));
                 }
-                if (hadStrongName && !TargetAssemblyDefinition.Name.HasPublicKey)
-                    Options.StrongNameLost = true;
 
                 // nice to have, merge .config (assembly configuration file) & .xml (assembly documentation)
                 ConfigMerger.Process(this);

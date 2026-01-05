@@ -4,7 +4,6 @@
     <ProjectGuid>{4A253A60-D998-4CA2-B9D5-46567A2FBF80}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>ILRepacking</RootNamespace>
-    <TargetFrameworks>netstandard2.0;netcoreapp3.1;net461</TargetFrameworks>
     <StartupObject>ILRepacking.Application</StartupObject>
     <PublishUrl>publish\</PublishUrl>
     <MapFileExtensions>true</MapFileExtensions>
@@ -18,6 +17,8 @@
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <LangVersion>latest</LangVersion>
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugType>portable</DebugType>
@@ -26,17 +27,12 @@
     <DebugType>portable</DebugType>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="BamlParser.NetStandard" Version="1.0.0" />
     <PackageReference Include="fasterflect" Version="3.0.0" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="Mono.Cecil" Version="0.11.4" />
-    <PackageReference Condition=" '$(TargetFramework)' != 'net461' " Include="Mono.Posix.NETStandard" Version="1.0.0" />
-    <PackageReference Condition=" '$(TargetFramework)' == 'net461' " Include="Mono.Posix" Version="4.0.0" />
+    <PackageReference Include="SourceLink" Version="1.1.0" GeneratePathProperty="true" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="ILRepack.snk" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="..\packages\SourceLink.1.1.0\tools\pdbstr.exe" />
+    <EmbeddedResource Include="$(PkgSourceLink)\tools\pdbstr.exe" />
   </ItemGroup>
 </Project>

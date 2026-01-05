@@ -1,14 +1,11 @@
-﻿using Microsoft.Win32;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using ILRepack.IntegrationTests.Helpers;
 
 namespace ILRepack.IntegrationTests.Peverify
@@ -20,93 +17,200 @@ namespace ILRepack.IntegrationTests.Peverify
         public const string VER_E_TYPELOAD = "801318f3";
         public const string VER_E_STACK_OVERFLOW = "80131856";
 
-        static Regex Success = new Regex(@"All Classes and Methods in .* Verified");
-        static Regex Failure = new Regex(@"\d+ Error\(s\) Verifying .*");
-
-        private static string FindVerifier()
+        // ILVerify patterns
+        static Regex VerificationPassed = new Regex(@"All Classes and Methods in .* Verified\.?");
+        static Regex ILVerifyError = new Regex(@"\[IL\]: Error \[");
+        
+        public static async Task<List<string>> PeverifyAsync(string workingDirectory, params string[] args)
         {
-            var sdkdir = @"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\";
-            if (!Directory.Exists(sdkdir))
+            // Use dotnet ilverify instead of legacy peverify.exe
+            var assemblyPaths = args.Select(arg => Path.Combine(workingDirectory, arg)).ToList();
+            
+            // ILVerify requires explicit reference assemblies, so we need to find and include them
+            var allReferencePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            // 1. Include DLLs from the working directory
+            foreach (var dll in Directory.GetFiles(workingDirectory, "*.dll"))
             {
-                throw new Exception("Windows SDK not found");
-            }
-
-            List<Version> versions = new List<Version>();
-
-            foreach(var dir in Directory.EnumerateDirectories(sdkdir, "NETFX *"))
-            {
-                var parts = Path.GetFileName(dir)?.Split(' ');
-
-                if(parts == null || parts.Length != 3) continue;
-                Version ver;
-                if (Version.TryParse(parts[1], out ver))
+                if (!assemblyPaths.Contains(dll, StringComparer.OrdinalIgnoreCase))
                 {
-                    versions.Add(ver);
+                    allReferencePaths.Add(dll);
                 }
             }
-
-            if (versions.Count == 0)
+            
+            // 2. Include reference assemblies from test bin directory (NuGet packages)
+            var testBinDir = AppContext.BaseDirectory;
+            if (Directory.Exists(testBinDir))
             {
-                throw new Exception(".NET SDK not found");
+                foreach (var dll in Directory.GetFiles(testBinDir, "*.dll", SearchOption.TopDirectoryOnly))
+                {
+                    var fileName = Path.GetFileName(dll);
+                    // Skip test assemblies themselves
+                    if (!fileName.StartsWith("ILRepack.", StringComparison.OrdinalIgnoreCase) &&
+                        !fileName.StartsWith("Microsoft.TestPlatform.", StringComparison.OrdinalIgnoreCase) &&
+                        !fileName.StartsWith("NUnit", StringComparison.OrdinalIgnoreCase) &&
+                        !fileName.Equals("testhost.dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        allReferencePaths.Add(dll);
+                    }
+                }
             }
-
-            var latest = versions.Max();
-
-            var tools = $"{sdkdir}\\NETFX {latest} Tools\\";
-
-            if (Environment.Is64BitOperatingSystem)
+            
+            // 3. Include .NET runtime references
+            var runtimeRefs = GetRuntimeReferences();
+            foreach (var runtimeRef in runtimeRefs)
             {
-                return $"{tools}\\x64\\peverify.exe";
+                allReferencePaths.Add(runtimeRef);
             }
-            return $"{tools}\\peverify.exe";
-        }
-
-        public static IObservable<string> Peverify(string workingDirectory, params string[] args)
-        {
-            // TODO use pedump --verify code,metadata on Mono ?
-            var verifierPath = FindVerifier();
-            var arg = $"\"{verifierPath}\" /NOLOGO /hresult /md /il {String.Join(" ", args)}";
+            
+            // Build the ilverify arguments
+            var referencesArg = string.Join(" ", allReferencePaths.Select(r => $"-r \"{r}\""));
+            var assembliesArg = string.Join(" ", assemblyPaths.Select(p => $"\"{p}\""));
+            
             var info = new ProcessStartInfo
             {
                 CreateNoWindow = true,
-                FileName = verifierPath,
+                FileName = "dotnet",
+                Arguments = $"ilverify {assembliesArg} {referencesArg}",
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 UseShellExecute = false,
-                WorkingDirectory = workingDirectory,
-                Arguments = arg
+                WorkingDirectory = workingDirectory
             };
-            return new ObservableProcess(info).Output.Where(s => !Success.IsMatch(s) && !Failure.IsMatch(s));
+            
+            var process = new AsyncProcess(info, throwOnNonZeroExitCode: false);
+            var (_, output) = await process.RunAsync();
+            
+            // Filter out success messages and return only error lines
+            return output.Where(s => !string.IsNullOrWhiteSpace(s) && 
+                                     !VerificationPassed.IsMatch(s) &&
+                                     (ILVerifyError.IsMatch(s) || s.Contains("Error"))).ToList();
         }
 
-        public static IObservable<string> ToErrorCodes(this IObservable<string> output)
+        private static IEnumerable<string> GetRuntimeReferences()
         {
-            return output.SelectMany(e =>
+            // Try to find the .NET runtime reference assemblies
+            // This helps ilverify resolve system types
+            try
             {
-                var i = e.IndexOf("[HRESULT 0x");
-                if (i != -1)
-                    return Observable.Return(e.Substring(i + 11, 8).ToLowerInvariant());
-                i = e.IndexOf("[MD](0x");
-                if (i != -1)
-                    return Observable.Return(e.Substring(i + 7, 8).ToLowerInvariant());
-                i = e.IndexOf("(Error: 0x");
-                if (i != -1)
-                    return Observable.Return(e.Substring(i + 10, 8).ToLowerInvariant());
-
-                return Observable.Empty<string>();
-            }
-            ).Distinct();
-        }
-
-        private static string FindRegistryValueUnderKey(string registryBaseKeyName, string registryKeyName, RegistryView registryView)
-        {
-            using (RegistryKey registryKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, registryView))
-            {
-                using (RegistryKey registryKey2 = registryKey.OpenSubKey(registryBaseKeyName))
+                var dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+                if (string.IsNullOrEmpty(dotnetRoot))
                 {
-                    return registryKey2?.GetValue(registryKeyName)?.ToString() ?? string.Empty;
+                    // Try common locations
+                    if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                    {
+                        dotnetRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet");
+                    }
+                    else
+                    {
+                        dotnetRoot = "/usr/share/dotnet";
+                        if (!Directory.Exists(dotnetRoot))
+                        {
+                            dotnetRoot = "/usr/local/share/dotnet";
+                        }
+                    }
+                }
+                
+                if (Directory.Exists(dotnetRoot))
+                {
+                    var sharedPath = Path.Combine(dotnetRoot, "shared", "Microsoft.NETCore.App");
+                    if (Directory.Exists(sharedPath))
+                    {
+                        // Get the latest version directory
+                        var versionDirs = Directory.GetDirectories(sharedPath)
+                            .Select(d => new { Path = d, Version = TryParseVersion(Path.GetFileName(d)) })
+                            .Where(x => x.Version != null)
+                            .OrderByDescending(x => x.Version)
+                            .ToList();
+                        
+                        if (versionDirs.Any())
+                        {
+                            var latestPath = versionDirs[0].Path;
+                            return Directory.GetFiles(latestPath, "*.dll");
+                        }
+                    }
                 }
             }
+            catch
+            {
+                // If we can't find runtime references, continue without them
+                // ilverify will still do basic verification
+            }
+            
+            return Enumerable.Empty<string>();
         }
 
+        private static Version TryParseVersion(string versionString)
+        {
+            try
+            {
+                return new Version(versionString);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static List<string> ToErrorCodes(this IEnumerable<string> output)
+        {
+            var errorCodes = new List<string>();
+            
+            foreach (var e in output)
+            {
+                var code = TryExtractErrorCode(e);
+                if (code != null)
+                {
+                    errorCodes.Add(code);
+                }
+            }
+            
+            return errorCodes.Distinct().ToList();
+        }
+
+        private static string TryExtractErrorCode(string errorLine)
+        {
+            // Try legacy PEVerify.exe format: [HRESULT 0x80131869]
+            var code = TryExtractHexCode(errorLine, "[HRESULT 0x", 11, 8);
+            if (code != null) return code;
+            
+            // Try legacy PEVerify.exe format: [MD](0x80131869)
+            code = TryExtractHexCode(errorLine, "[MD](0x", 7, 8);
+            if (code != null) return code;
+            
+            // Try legacy PEVerify.exe format: (Error: 0x80131869)
+            code = TryExtractHexCode(errorLine, "(Error: 0x", 10, 8);
+            if (code != null) return code;
+            
+            // Map ILVerify error messages to legacy HRESULT codes for compatibility
+            return MapILVerifyErrorToHResult(errorLine);
+        }
+
+        private static string TryExtractHexCode(string text, string prefix, int offset, int length)
+        {
+            var index = text.IndexOf(prefix);
+            if (index != -1 && index + offset + length <= text.Length)
+            {
+                return text.Substring(index + offset, length).ToLowerInvariant();
+            }
+            return null;
+        }
+
+        private static string MapILVerifyErrorToHResult(string errorLine)
+        {
+            if (errorLine.Contains("StackOverflow"))
+                return VER_E_STACK_OVERFLOW;
+            
+            if (errorLine.Contains("TypeLoad") || errorLine.Contains("Unable to resolve"))
+                return VER_E_TYPELOAD;
+            
+            if (errorLine.Contains("token") || errorLine.Contains("Token"))
+                return VER_E_TOKEN_RESOLVE;
+            
+            if (errorLine.Contains("InternalsVisibleTo") || errorLine.Contains("friend"))
+                return META_E_CA_FRIENDS_SN_REQUIRED;
+            
+            return null;
+        }
     }
 }

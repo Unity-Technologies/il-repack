@@ -1,76 +1,105 @@
 ﻿using ICSharpCode.SharpZipLib.Zip;
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Net;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
-using System.Reactive.Subjects;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace ILRepack.IntegrationTests.NuGet
 {
     static class NuGetHelpers
     {
-        private static IObservable<byte[]> CreateDownloadObservable(Uri uri)
+        private static readonly HttpClient httpClient = new HttpClient();
+
+        private static async Task<byte[]> DownloadWithRetryAsync(Uri uri, int maxRetries = 5)
         {
-            return Observable.Create<byte[]>(o => {
-                var result = new ReplaySubject<byte[]>();
-                var inner = Observable.Using(() => new WebClient(), wc => {
-                    var obs = Observable
-                        .FromEventPattern<
-                            DownloadDataCompletedEventHandler,
-                            DownloadDataCompletedEventArgs>(
-                                h => wc.DownloadDataCompleted += h,
-                                h => wc.DownloadDataCompleted -= h)
-                        .Take(1);
-                    wc.DownloadDataAsync(uri);
-                    return obs;
-                }).Subscribe(ep => {
-                    if (ep.EventArgs.Cancelled) {
-                        result.OnCompleted();
-                    } else {
-                        if (ep.EventArgs.Error != null) {
-                            result.OnError(ep.EventArgs.Error);
-                        } else {
-                            result.OnNext(ep.EventArgs.Result);
-                            result.OnCompleted();
-                        }
+            Exception lastException = null;
+            
+            for (int attempt = 0; attempt < maxRetries; attempt++)
+            {
+                try
+                {
+                    return await httpClient.GetByteArrayAsync(uri);
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    if (attempt < maxRetries - 1)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt))); // Exponential backoff
                     }
-                }, ex => {
-                    result.OnError(ex);
-                });
-                return new CompositeDisposable(inner, result.Subscribe(o));
-            }).Retry(5);
+                }
+            }
+            
+            throw new Exception($"Failed to download after {maxRetries} attempts", lastException);
         }
 
-        private static bool IsDllOrExe(Tuple<string, Func<Stream>> tuple)
+        private static bool IsDllOrExe(string normalizedName)
         {
-            return Path.GetExtension(tuple.Item1) == ".dll" || Path.GetExtension(tuple.Item1) == ".exe";
+            return Path.GetExtension(normalizedName) == ".dll" || Path.GetExtension(normalizedName) == ".exe";
         }
  
-        public static IObservable<Tuple<string, Func<Stream>>> GetNupkgAssembliesAsync(Package package)
+        public static async Task<List<(string normalizedName, Func<Stream> streamProvider)>> GetNupkgAssembliesAsync(Package package)
         {
-            return GetNupkgContentAsync(package).Where(IsDllOrExe).Where(package.Matches);
-        }
+            var allContent = await GetNupkgContentAsync(package);
+
+            allContent.RemoveAll(t => !IsDllOrExe(t.normalizedName));
+            allContent.RemoveAll(t => !package.Matches(t));
+
+            return allContent;
+        } 
  
-        public static IObservable<Tuple<string, Func<Stream>>> GetNupkgContentAsync(Package package)
+        public static async Task<List<(string normalizedName, Func<Stream> streamProvider)>> GetNupkgContentAsync(Package package)
         {
-            var o = CreateDownloadObservable(new Uri($"http://nuget.org/api/v2/package/{package.Name}/{package.Version}"));
-            return o.SelectMany(input => {
-                return Observable.Create<Tuple<ZipFile, ZipEntry>>(observer => {
-                    var z = new ZipFile(new MemoryStream(input)) { IsStreamOwner = true };
-                    var sub = z.Cast<ZipEntry>().ToObservable()
-                        .Select(ze => Tuple.Create(z, ze))
-                        .Subscribe(observer);
-                    return new CompositeDisposable() { z, sub };
-                });
-            })
-            .Select(t => Tuple.Create<string, Func<Stream>>(
-                t.Item2.Name
-                    .Replace('\\', Path.DirectorySeparatorChar)
-                    .Replace('/', Path.DirectorySeparatorChar)
-                    .Replace("%2B", "+"),
-                () => t.Item1.GetInputStream(t.Item2)));
+            var downloadBytes = await DownloadWithRetryAsync(
+                new Uri($"http://nuget.org/api/v2/package/{package.Name}/{package.Version}"));
+            
+            return ExtractZipContent(downloadBytes);
+        }
+
+        private static List<(string normalizedName, Func<Stream> streamProvider)> ExtractZipContent(byte[] downloadBytes)
+        {
+            var results = new List<(string normalizedName, Func<Stream> streamProvider)>();
+            
+            // We need to keep the zip file data in memory since we're returning Func<Stream>
+            var zipData = new byte[downloadBytes.Length];
+            Array.Copy(downloadBytes, zipData, downloadBytes.Length);
+            
+            using (var zipFile = new ZipFile(new MemoryStream(downloadBytes)))
+            {
+                foreach (ZipEntry entry in zipFile)
+                {
+                    // Create a closure over the entry data
+                    var entryData = new byte[entry.Size];
+                    if (entry.Size > 0)
+                    {
+                        using (var stream = zipFile.GetInputStream(entry))
+                        {
+                            int offset = 0;
+                            int remaining = (int)entry.Size;
+                            while (remaining > 0)
+                            {
+                                int read = stream.Read(entryData, offset, remaining);
+                                if (read <= 0)
+                                    break;
+                                offset += read;
+                                remaining -= read;
+                            }
+                        }
+                    }
+                    
+                    var normalizedName = entry.Name
+                        .Replace('\\', Path.DirectorySeparatorChar)
+                        .Replace('/', Path.DirectorySeparatorChar)
+                        .Replace("%2B", "+");
+                    
+                    results.Add((
+                        normalizedName,
+                        () => new MemoryStream(entryData)));
+                }
+            }
+            
+            return results;
         }
     }
 }

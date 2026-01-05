@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "dotnet-ilverify": {
+      "version": "8.0.0",
+      "commands": [
+        "ilverify"
+      ],
+      "rollForward": false
+    },
+    "sourcelink": {
+      "version": "3.1.1",
+      "commands": [
+        "sourcelink"
+      ]
+    }
+  }
+}

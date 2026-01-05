@@ -26,7 +26,6 @@ namespace ILRepacking
         public bool Closed { get; set; } // UNIMPL
         public bool CopyAttributes { get; set; }
         public bool DebugInfo { get; set; }
-        public bool DelaySign { get; set; }
 
         /// <summary>
         /// Gets or sets a file that contains one regex per line to compare against 
@@ -57,17 +56,13 @@ namespace ILRepacking
         public int FileAlignment { get; set; } // UNIMPL, not supported by cecil
         public string[] InputAssemblies { get; set; }
         public bool Internalize { get; set; }
-        public string KeyFile { get; set; }
-        public string KeyContainer { get; set; }
         public bool Parallel { get; set; }
         public bool PauseBeforeExit { get; set; }
         public bool Log { get; set; }
         public string LogFile { get; set; }
 
         public string OutputFile { get; set; }
-        public bool PublicKeyTokens { get; set; } // UNIMPL
 
-        public bool StrongNameLost { get; set; }
         public ILRepack.Kind? TargetKind { get; set; }
         public string TargetPlatformDirectory { get; set; }
         public string TargetPlatformVersion { get; set; }
@@ -167,7 +162,6 @@ namespace ILRepacking
             Closed = cmd.Modifier("closed");
             CopyAttributes = cmd.Modifier("copyattrs");
             DebugInfo = !cmd.Modifier("ndebug");
-            DelaySign = cmd.Modifier("delaysign");
             cmd.Option("align"); // not supported, just prevent interpreting this as file...
             Internalize = cmd.HasOption("internalize");
             if (Internalize)
@@ -177,13 +171,10 @@ namespace ILRepacking
             }
 
             RenameInternalized = cmd.Modifier("renameinternalized");
-            KeyFile = cmd.Option("keyfile");
-            KeyContainer = cmd.Option("keycontainer");
             Log = cmd.HasOption("log");
             if (Log)
                 LogFile = cmd.Option("log");
             OutputFile = cmd.Option("out");
-            PublicKeyTokens = cmd.Modifier("usefullpublickeyforreferences");
             var targetKind = cmd.Option("target");
             if (string.IsNullOrEmpty(targetKind))
                 targetKind = cmd.Option("t");
@@ -256,9 +247,6 @@ namespace ILRepacking
         /// </summary>
         internal void Validate()
         {
-            if (DelaySign && KeyFile == null && KeyContainer == null)
-                throw new InvalidOperationException("Option 'delaysign' is only valid with 'keyfile' or 'keycontainer'.");
-
             if (AllowMultipleAssemblyLevelAttributes && !CopyAttributes)
                 throw new InvalidOperationException("Option 'allowMultiple' is only valid with 'copyattrs'.");
 
@@ -273,9 +261,6 @@ namespace ILRepacking
 
             if (InputAssemblies == null || InputAssemblies.Length == 0)
                 throw new ArgumentException("No input files given.");
-
-            if ((KeyFile != null) && !file.Exists(KeyFile))
-                throw new ArgumentException($"KeyFile does not exist: '{KeyFile}'.");
         }
 
         public IList<string> ResolveFiles()
@@ -304,7 +289,6 @@ namespace ILRepacking
 
             commandLine.AppendLine("------------- IL Repack Arguments -------------");
             commandLine.Append($"/out:{OutputFile} ");
-            commandLine.Append(!string.IsNullOrEmpty(KeyFile) ? $"/keyfile:{KeyFile} " : string.Empty);
             commandLine.Append(Internalize ? "/internalize" : string.Empty);
             commandLine.AppendLine(assembliesArgument);
             commandLine.Append("-----------------------------------------------");

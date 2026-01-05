@@ -56,19 +56,14 @@ namespace ILRepacking.Steps
                 repackList = _repackContext.MergedAssemblies.Select(a => a.FullName).ToList();
             }
 
-            bool areCollectedStreamsWritten = false;
-            var bamlStreamCollector = new BamlStreamCollector(_logger, _repackContext);
-            var bamlResourcePatcher = new BamlResourcePatcher(_repackContext);
             var commonProcessors = new List<IResProcessor>
             {
                 new StringResourceProcessor(_repackContext),
                 new GenericResourceProcessor(_repackContext)
             };
 
-            var primaryAssemblyProcessors =
-                new[] { bamlResourcePatcher }.Union(commonProcessors).ToList();
-            var otherAssemblyProcessors =
-                new List<IResProcessor> { bamlResourcePatcher, bamlStreamCollector }.Union(commonProcessors).ToList();
+            var primaryAssemblyProcessors = commonProcessors.ToList();
+            var otherAssemblyProcessors = commonProcessors.ToList();
 
             // Primary Assembly *must* be the last one in order to properly gather the resources
             // from dependencies
@@ -122,16 +117,7 @@ namespace ILRepacking.Steps
                                     var er = (EmbeddedResource)resource;
                                     if (er.Name.EndsWith(".resources"))
                                     {
-                                        // we don't want to write the bamls to other embedded resource files
-                                        bool shouldWriteCollectedBamlStreams =
-                                            isPrimaryAssembly &&
-                                            $"{assembly.Name.Name}.g.resources".Equals(er.Name);
-
-                                        if (shouldWriteCollectedBamlStreams)
-                                            areCollectedStreamsWritten = true;
-
-                                        newResource = FixResxResource(assembly, er, assemblyProcessors,
-                                            shouldWriteCollectedBamlStreams ? bamlStreamCollector : null);
+                                        newResource = FixResxResource(assembly, er, assemblyProcessors, null);
                                     }
                                     break;
                             }
@@ -148,30 +134,8 @@ namespace ILRepacking.Steps
             if (!_options.NoRepackRes)
                 _targetAssemblyMainModule.Resources.Add(
                     GenerateRepackListResource(repackList.ToList()));
-
-            CreateNewBamlResourceIfNeeded(areCollectedStreamsWritten, bamlStreamCollector);
         }
-
-        private void CreateNewBamlResourceIfNeeded(bool areCollectedStreamsWritten, BamlStreamCollector bamlStreamCollector)
-        {
-            // if there weren't any (BAML) resources in the original assembly, then we need to create a new resource
-            if (areCollectedStreamsWritten || !bamlStreamCollector.HasBamlStreams)
-                return;
-
-            string resourceName = _repackContext.PrimaryAssemblyDefinition.Name.Name + ".g.resources";
-            EmbeddedResource resource = new EmbeddedResource(resourceName, ManifestResourceAttributes.Public, new byte[0]);
-            var output = new MemoryStream();
-            var rw = new ResourceWriter(output);
-
-            // do a final processing, if any, on the embeddedResource itself
-            bamlStreamCollector.Process(resource, rw);
-
-            rw.Generate();
-            output.Position = 0;
-            _targetAssemblyMainModule.Resources.Add(
-                new EmbeddedResource(resource.Name, resource.Attributes, output));
-        }
-
+        
         private static Dictionary<string, List<int>> MergeIkvmExports(
             Dictionary<string, List<int>> currentExports,
             Dictionary<string, List<int>> extraExports)

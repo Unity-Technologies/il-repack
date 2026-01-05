@@ -1,0 +1,267 @@
+name: Build, Test, and Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:8.0
+      options: --user root
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.NUGET_PACKAGES }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.config', '**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+    
+    - name: Restore dependencies
+      run: dotnet restore ILRepack/ILRepack.csproj
+    
+    - name: Build ILRepack (all frameworks)
+      run: dotnet build ILRepack/ILRepack.csproj --configuration Release --no-restore
+    
+    - name: Publish ILRepack as framework-dependent tool
+      run: |
+        dotnet publish ILRepack/ILRepack.csproj \
+          --configuration Release \
+          --framework net8.0 \
+          --output publish/tool \
+          --self-contained false
+    
+    - name: Restore for unit tests
+      run: |
+        dotnet restore ILRepack.Tests/ILRepack.Tests.csproj
+    
+    - name: Run unit tests
+      run: |
+        dotnet test ILRepack.Tests/ILRepack.Tests.csproj \
+          --configuration Release \
+          --logger "trx;LogFileName=test-results-unit.trx"
+    
+    - name: Restore for integration tests
+      run: |
+        dotnet restore ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj
+        dotnet tool restore --tool-manifest ILRepack.IntegrationTests/.config/dotnet-tools.json
+    
+    - name: Run integration tests  
+      run: |
+        dotnet test ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj \
+          --configuration Release \
+          --logger "trx;LogFileName=test-results-integration.trx"
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          **/TestResults/*.trx
+    
+    - name: Repack ILRepack using itself (net8.0)
+      run: |
+        cd ILRepack/bin/Release/net8.0
+        mkdir -p temp-repack
+        
+        # Use the built ILRepack to merge its dependencies
+        dotnet ILRepack.dll /log /wildcards /internalize \
+          /out:temp-repack/ILRepack.dll \
+          ILRepack.dll \
+          Fasterflect.dll \
+          Mono.Cecil.dll \
+          Mono.Cecil.Mdb.dll \
+          Mono.Cecil.Pdb.dll
+        
+        # Verify repack succeeded
+        if [ ! -f "temp-repack/ILRepack.dll" ] || [ ! -s "temp-repack/ILRepack.dll" ]; then
+          echo "ERROR: Repack failed to produce ILRepack.dll"
+          exit 1
+        fi
+        
+        echo "Repack succeeded"
+    
+    - name: Repack signed library version
+      run: |
+        cd ILRepack/bin/Release/net8.0
+        
+        dotnet ILRepack.dll /log /wildcards /internalize \
+          /out:temp-repack/ILRepack.Lib.dll \
+          /target:library \
+          ILRepack.dll \
+          Fasterflect.dll \
+          Mono.Cecil.dll \
+          Mono.Cecil.Mdb.dll \
+          Mono.Cecil.Pdb.dll
+        
+        # Verify repack succeeded
+        if [ ! -f "temp-repack/ILRepack.Lib.dll" ] || [ ! -s "temp-repack/ILRepack.Lib.dll" ]; then
+          echo "ERROR: Library repack failed to produce ILRepack.Lib.dll"
+          exit 1
+        fi
+        
+        echo "Library repack succeeded"
+    
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts
+        
+        # Copy repacked DLL (must exist)
+        cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.dll artifacts/
+        cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.pdb artifacts/
+        
+        # Copy signed library (must exist)
+        cp ILRepack/bin/Release/net8.0/temp-repack/ILRepack.Lib.dll artifacts/
+        
+        # Copy published framework-dependent runtime config files (must exist)
+        cp publish/tool/ILRepack.runtimeconfig.json artifacts/
+        cp publish/tool/ILRepack.deps.json artifacts/
+        
+        ls -lah artifacts/
+    
+    - name: Upload repacked binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: repacked-binaries
+        path: artifacts/*
+  
+  create-packages:
+    name: Create NuGet Packages and Release
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:8.0
+      options: --user root
+    needs: build-and-test
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download repacked binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: repacked-binaries
+        path: artifacts
+    
+    - name: Install zip utility
+      run: apt-get update && apt-get install -y zip
+    
+    - name: Determine version
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          version="${{ github.ref }}"
+          version="${version#refs/tags/v}"
+        else
+          gitHash=$(git rev-parse --short HEAD)
+          baseVersion="2.1.8"
+          version="$baseVersion-dev-$gitHash"
+        fi
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "Version: $version"
+      shell: bash
+    
+    - name: Create NuGet package
+      run: |
+        version="${{ steps.version.outputs.version }}"
+        
+        mkdir -p packages
+        mkdir -p nupkg/tools/net8.0
+        mkdir -p nupkg/lib/net8.0
+        mkdir -p nupkg/build
+        
+        # Copy tool version (executable, for command-line use)
+        cp artifacts/ILRepack.dll nupkg/tools/net8.0/
+        cp artifacts/ILRepack.pdb nupkg/tools/net8.0/
+        cp artifacts/ILRepack.runtimeconfig.json nupkg/tools/net8.0/
+        cp artifacts/ILRepack.deps.json nupkg/tools/net8.0/
+        
+        # Copy library version (for programmatic use as a reference)
+        cp artifacts/ILRepack.Lib.dll nupkg/lib/net8.0/ILRepack.dll
+        
+        # Copy build props
+        cp ILRepack.props nupkg/build/
+        
+        # Create nuspec file
+        cat > nupkg/Unity.ILRepack.nuspec << ENDOFFILE
+        <?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+          <metadata>
+            <id>Unity.ILRepack</id>
+            <version>${version}</version>
+            <title>ILRepack - Open-source alternative to ILMerge</title>
+            <authors>Unity Technologies, Alexander Vostres, Francois Valdy</authors>
+            <owners>Unity Technologies</owners>
+            <projectUrl>https://github.com/Unity-Technologies/il-repack</projectUrl>
+            <requireLicenseAcceptance>false</requireLicenseAcceptance>
+            <description>ILRepack is meant at replacing ILMerge / Mono.Merge. The former being closed-source, impossible to customize, slow, resource consuming and many more. The later being deprecated, unsupported, and based on an old version of Mono.Cecil. This package includes both a command-line tool (in tools/) and a library for programmatic use (in lib/).</description>
+            <summary>ILRepack is a utility that can be used to merge multiple .NET assemblies into a single assembly</summary>
+            <copyright>Copyright Unity Technologies 2026-, Alexander Vostres 2018-2020, Francois Valdy 2011-2015</copyright>
+          </metadata>
+          <files>
+            <file src="tools/net8.0/ILRepack.dll" target="tools/net8.0" />
+            <file src="tools/net8.0/ILRepack.pdb" target="tools/net8.0" />
+            <file src="tools/net8.0/ILRepack.runtimeconfig.json" target="tools/net8.0" />
+            <file src="tools/net8.0/ILRepack.deps.json" target="tools/net8.0" />
+            <file src="lib/net8.0/ILRepack.dll" target="lib/net8.0" />
+            <file src="build/ILRepack.props" target="build" />
+          </files>
+        </package>
+        ENDOFFILE
+        
+        cd nupkg
+        zip -r ../packages/Unity.ILRepack.${version}.nupkg *
+        cd ..
+      shell: bash
+    
+    - name: Upload NuGet packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: packages/*.nupkg
+    
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          packages/*.nupkg
+          artifacts/ILRepack.dll
+          artifacts/ILRepack.pdb
+          artifacts/ILRepack.Lib.dll
+          artifacts/ILRepack.runtimeconfig.json
+          artifacts/ILRepack.deps.json
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
