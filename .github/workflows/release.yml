@@ -172,8 +172,10 @@ jobs:
         name: repacked-binaries
         path: artifacts
     
-    - name: Install zip utility
-      run: apt-get update && apt-get install -y zip
+    - name: Install zip utility and configure Git
+      run: |
+        apt-get update && apt-get install -y zip
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
     
     - name: Determine version
       id: version
