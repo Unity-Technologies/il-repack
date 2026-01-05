@@ -1,125 +1,84 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Reactive;
-using System.Reactive.Concurrency;
-using System.Reactive.Linq;
-using System.Reactive.Subjects;
-using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace ILRepack.IntegrationTests.Helpers
 {
-    // Shameless copy from the ultimate Rx fu master:
-    // https://github.com/paulcbetts/peasant/blob/master/Peasant/Helpers/ObservableProcess.cs
-    public class ObservableProcess : IObservable<int>
+    public class AsyncProcess
     {
-        readonly AsyncSubject<int> exit = new AsyncSubject<int>();
-        readonly object gate = 42;
-        readonly ReplaySubject<string> output = new ReplaySubject<string>();
-        readonly Process process;
-        readonly IObserver<string> input;
+        private readonly ProcessStartInfo startInfo;
+        private readonly bool throwOnNonZeroExitCode;
 
-        public ObservableProcess(ProcessStartInfo startInfo, bool throwOnNonZeroExitCode = true)
+        public AsyncProcess(ProcessStartInfo startInfo, bool throwOnNonZeroExitCode = true)
         {
-            startInfo.RedirectStandardError = startInfo.RedirectStandardOutput = startInfo.RedirectStandardInput = true;
-            process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            process.OutputDataReceived += OnReceived;
-            process.ErrorDataReceived += OnReceived;
+            this.startInfo = startInfo;
+            this.throwOnNonZeroExitCode = throwOnNonZeroExitCode;
+        }
 
-            process.Start();
-
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            input = Observer.Create<string>(
-                x => { process.StandardInput.WriteLine(x); process.StandardInput.Flush(); },
-                () => { });
-
-            Observable.Start(() =>
+        public async Task<(int exitCode, List<string> output)> RunAsync()
+        {
+            var output = new List<string>();
+            var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+            
+            var outputCompleted = new TaskCompletionSource<bool>();
+            var errorCompleted = new TaskCompletionSource<bool>();
+            
+            process.OutputDataReceived += (s, e) =>
             {
-                int exitCode;
-                try
+                if (e.Data == null)
                 {
-                    process.WaitForExit(60 * 1000);
-                }
-                finally
-                {
-                    // recreate flush logic from System.Diagnostics.Process
-                    WaitUntilEndOfFile("output");
-                    WaitUntilEndOfFile("error");
-
-                    exitCode = process.ExitCode;
-                    process.OutputDataReceived -= OnReceived;
-                    process.ErrorDataReceived -= OnReceived;
-                    process.Close();
-                }
-
-                output.OnCompleted();
-
-                if (exitCode != 0 && throwOnNonZeroExitCode)
-                {
-                    var error = string.Join("\n", output.ToArray().First());
-                    exit.OnError(new Exception(error));
+                    outputCompleted.TrySetResult(true);
                 }
                 else
                 {
-                    exit.OnNext(exitCode);
-                    exit.OnCompleted();
+                    lock (output)
+                    {
+                        output.Add(ReparseAsciiDataAsUtf8(e.Data));
+                    }
                 }
-            }, Scheduler.Default);
-        }
-
-        public IObserver<string> Input
-        {
-            get { return input; }
-        }
-
-        public IObservable<string> Output
-        {
-            get { return output; }
-        }
-
-        public IDisposable Subscribe(IObserver<int> observer)
-        {
-            return exit.Subscribe(observer);
-        }
-
-        public void Kill()
-        {
-            process.Kill();
-        }
-
-        public int ProcessId
-        {
-            get { return process.Id; }
-        }
-
-        void OnReceived(object s, DataReceivedEventArgs e)
-        {
-            if (e.Data == null) return;
-            lock (gate)
+            };
+            
+            process.ErrorDataReceived += (s, e) =>
             {
-                output.OnNext(ReparseAsciiDataAsUtf8(e.Data));
-            }
-        }
-
-        void WaitUntilEndOfFile(string field)
-        {
-            var fi = process.GetType().GetField(field, BindingFlags.NonPublic | BindingFlags.Instance);
-            if (fi != null)
-            {
-                var sr = fi.GetValue(process);
-                if (sr != null)
+                if (e.Data == null)
                 {
-                    var m = sr.GetType().GetMethod("WaitUtilEOF", BindingFlags.NonPublic | BindingFlags.Instance);
-                    m.Invoke(sr, null);
+                    errorCompleted.TrySetResult(true);
                 }
+                else
+                {
+                    lock (output)
+                    {
+                        output.Add(ReparseAsciiDataAsUtf8(e.Data));
+                    }
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            await Task.WhenAll(outputCompleted.Task, errorCompleted.Task);
+            await Task.Run(() => process.WaitForExit());
+
+            int exitCode = process.ExitCode;
+            process.Close();
+
+            if (exitCode != 0 && throwOnNonZeroExitCode)
+            {
+                var error = string.Join("\n", output);
+                throw new Exception(error);
             }
+
+            return (exitCode, output);
         }
 
-        static string ReparseAsciiDataAsUtf8(string input)
+        public List<string> Output { get; } = new List<string>();
+
+        private static string ReparseAsciiDataAsUtf8(string input)
         {
-            if (String.IsNullOrEmpty(input)) return input;
+            if (string.IsNullOrEmpty(input)) return input;
 
             var bytes = new byte[input.Length * 2];
             int i = 0;

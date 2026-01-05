@@ -64,6 +64,10 @@ jobs:
           --logger "trx;LogFileName=test-results-unit.trx" || true
       continue-on-error: true
     
+    - name: Restore dotnet tools for integration tests
+      run: |
+        dotnet tool restore --tool-manifest ILRepack.IntegrationTests/.config/dotnet-tools.json
+    
     - name: Run integration tests  
       run: |
         dotnet test ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj \

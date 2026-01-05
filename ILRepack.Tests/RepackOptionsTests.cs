@@ -172,11 +172,10 @@ namespace ILRepack.Tests
         }
 
         [Test]
-        [ExpectedException(typeof(RepackOptions.InvalidTargetKindException))]
         public void WithOptionTargetKindInvalid__Parse__TargetKindIsSet()
         {
             commandLine.Setup(cmd => cmd.Option("target")).Returns("notsupportedtype");
-            Parse();
+            Assert.That(() => Parse(), Throws.InstanceOf<RepackOptions.InvalidTargetKindException>());
         }
 
         [Test]
@@ -256,16 +255,15 @@ namespace ILRepack.Tests
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException), ExpectedMessage = "No input files given.")]
         public void WithNoInputAssemblies__ParseProperties__ThrowException()
         {
             commandLine.Setup(cmd => cmd.Option("out")).Returns("filename");
             Parse();
-            options.Validate();
+            Assert.That(() => options.Validate(), 
+                Throws.ArgumentException.With.Message.EqualTo("No input files given."));
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException), ExpectedMessage = "KeyFile does not exist", MatchType = MessageMatch.Contains)]
         public void WithNoKeyFile__ParseProperties__ThrowException()
         {
             var inputAssemblies = new List<string> { "A", "B", "C" };
@@ -273,11 +271,11 @@ namespace ILRepack.Tests
             commandLine.Setup(cmd => cmd.OtherAguments).Returns(inputAssemblies.ToArray());
             commandLine.Setup(cmd => cmd.Option("keyfile")).Returns("filename");
             Parse();
-            options.Validate();
+            Assert.That(() => options.Validate(), 
+                Throws.ArgumentException.With.Message.Contains("KeyFile does not exist"));
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException), ExpectedMessage = "KeyFile does not exist", MatchType = MessageMatch.Contains)]
         public void WithNoKeyFileEvenWithKeyContainer__ParseProperties__ThrowException()
         {
             var inputAssemblies = new List<string> { "A", "B", "C" };
@@ -286,7 +284,8 @@ namespace ILRepack.Tests
             commandLine.Setup(cmd => cmd.Option("keyfile")).Returns("filename");
             commandLine.Setup(cmd => cmd.Option("keycontainer")).Returns("containername");
             Parse();
-            options.Validate();
+            Assert.That(() => options.Validate(),
+                Throws.ArgumentException.With.Message.Contains("KeyFile does not exist"));
         }
 
         [Test]

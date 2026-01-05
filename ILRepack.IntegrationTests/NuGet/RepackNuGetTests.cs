@@ -6,9 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reactive.Linq;
-using System.Reactive.PlatformServices;
-using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using ILRepacking.Steps.SourceServerData;
 
 namespace ILRepack.IntegrationTests.NuGet
@@ -17,10 +15,15 @@ namespace ILRepack.IntegrationTests.NuGet
     {
         string tempDirectory;
 
+        [OneTimeSetUp]
+        public void RegisterCodepage()
+        {
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        }
+
         [SetUp]
         public void GenerateTempFolder()
         {
-            PlatformEnlightenmentProvider.Current = new TestsPlatformEnglightenmentProvider();
             tempDirectory = TestHelpers.GenerateTempFolder();
         }
 
@@ -31,63 +34,51 @@ namespace ILRepack.IntegrationTests.NuGet
         }
 
         [TestCaseSource(typeof(Data), nameof(Data.Packages))]
-        public void RoundtripNupkg(Package p)
+        public async Task RoundtripNupkg(Package p)
         {
-            var count = NuGetHelpers.GetNupkgAssembliesAsync(p)
-                .Do(t => TestHelpers.SaveAs(t.Item2(), tempDirectory, "foo.dll"))
-                .Do(file => RepackFoo(file.Item1))
-                .Do(_ => VerifyTest(new[] { "foo.dll" }))
-                .ToEnumerable().Count();
-            Assert.IsTrue(count > 0);
+            var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(p);
+            Assume.That(assemblies.Count, Is.GreaterThan(0));
+            
+            foreach (var (normalizedName, streamProvider) in assemblies)
+            {
+                TestHelpers.SaveAs(streamProvider(), tempDirectory, "foo.dll");
+                RepackFoo(normalizedName);
+                await VerifyTestAsync(new[] { "foo.dll" });
+            }
         }
 
         [Category("LongRunning")]
         [Platform(Include = "win")]
         [TestCaseSource(typeof(Data), nameof(Data.Platforms), Category = "ComplexTests")]
-        public void NupkgPlatform(Platform platform)
+        public async Task NupkgPlatform(Platform platform)
         {
-            platform.Packages.ToObservable()
-                .SelectMany(NuGetHelpers.GetNupkgAssembliesAsync)
-                .Do(lib => TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1))
-                .Select(lib => Path.GetFileName(lib.Item1))
-                .ToList()
-                .Do(list => RepackPlatform(platform, list))
-                .Wait();
-            var errors = PeverifyHelper
-                .Peverify(tempDirectory, "test.dll")
-                .Do(Console.WriteLine)
-                .ToErrorCodes().ToEnumerable();
-            Assert.IsFalse(errors.Contains(PeverifyHelper.VER_E_STACK_OVERFLOW));
+            var fileList = new List<string>();
+            
+            foreach (var package in platform.Packages)
+            {
+                var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
+                foreach (var lib in assemblies)
+                {
+                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
+                    fileList.Add(Path.GetFileName(lib.Item1));
+                }
+            }
+            
+            RepackPlatform(platform, fileList);
+            
+            var errors = await PeverifyHelper.PeverifyAsync(tempDirectory, "test.dll");
+            foreach (var error in errors)
+            {
+                Console.WriteLine(error);
+            }
+            
+            var errorCodes = errors.ToErrorCodes();
+            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.VER_E_STACK_OVERFLOW));
         }
 
         [Test]
         [Platform(Include = "win")]
-        public void VerifiesMergesBclFine()
-        {
-            var platform = Platform.From(
-                Package.From("Microsoft.Bcl", "1.1.10")
-                    .WithArtifact(@"lib\net40\System.Runtime.dll"),
-                Package.From("Microsoft.Bcl", "1.1.10")
-                    .WithArtifact(@"lib\net40\System.Threading.Tasks.dll"),
-                Package.From("Microsoft.Bcl.Async", "1.0.168")
-                    .WithArtifact(@"lib\net40\Microsoft.Threading.Tasks.dll"))
-                .WithExtraArgs(@"/targetplatform:v4,C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0");
-
-            platform.Packages.ToObservable()
-                .SelectMany(NuGetHelpers.GetNupkgAssembliesAsync)
-                .Do(lib => TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1))
-                .Select(lib => Path.GetFileName(lib.Item1))
-                .ToList()
-                .Do(list => RepackPlatform(platform, list))
-                .First();
-            var errors = PeverifyHelper.Peverify(tempDirectory, "test.dll").Do(Console.WriteLine).ToErrorCodes().ToEnumerable();
-            Assert.IsFalse(errors.Contains(PeverifyHelper.VER_E_TOKEN_RESOLVE));
-            Assert.IsFalse(errors.Contains(PeverifyHelper.VER_E_TYPELOAD));
-        }
-
-        [Test]
-        [Platform(Include = "win")]
-        public void VerifiesMergesFineWhenOutPathIsOneOfInputs()
+        public async Task VerifiesMergesBclFine()
         {
             var platform = Platform.From(
                 Package.From("Microsoft.Bcl", "1.1.10")
@@ -98,18 +89,60 @@ namespace ILRepack.IntegrationTests.NuGet
                     .WithArtifact(@"lib\net40\Microsoft.Threading.Tasks.dll"))
                 .WithExtraArgs(@"/targetplatform:v4,C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0");
 
-            platform.Packages.ToObservable()
-                .SelectMany(NuGetHelpers.GetNupkgAssembliesAsync)
-                .Do(lib => TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1))
-                .Select(lib => Path.GetFileName(lib.Item1))
-                .ToList()
-                .Do(list => RepackPlatformIntoPrimary(platform, list))
-                .First();
+            var fileList = new List<string>();
+            foreach (var package in platform.Packages)
+            {
+                var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
+                foreach (var lib in assemblies)
+                {
+                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
+                    fileList.Add(Path.GetFileName(lib.Item1));
+                }
+            }
+            
+            RepackPlatform(platform, fileList);
+            
+            var errors = await PeverifyHelper.PeverifyAsync(tempDirectory, "test.dll");
+            foreach (var error in errors)
+            {
+                Console.WriteLine(error);
+            }
+            
+            var errorCodes = errors.ToErrorCodes();
+            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.VER_E_TOKEN_RESOLVE));
+            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.VER_E_TYPELOAD));
         }
 
         [Test]
         [Platform(Include = "win")]
-        public void VerifiesMergedSignedAssemblyHasNoUnsignedFriend()
+        public async Task VerifiesMergesFineWhenOutPathIsOneOfInputs()
+        {
+            var platform = Platform.From(
+                Package.From("Microsoft.Bcl", "1.1.10")
+                    .WithArtifact(@"lib\net40\System.Runtime.dll"),
+                Package.From("Microsoft.Bcl", "1.1.10")
+                    .WithArtifact(@"lib\net40\System.Threading.Tasks.dll"),
+                Package.From("Microsoft.Bcl.Async", "1.0.168")
+                    .WithArtifact(@"lib\net40\Microsoft.Threading.Tasks.dll"))
+                .WithExtraArgs(@"/targetplatform:v4,C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0");
+
+            var fileList = new List<string>();
+            foreach (var package in platform.Packages)
+            {
+                var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
+                foreach (var lib in assemblies)
+                {
+                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
+                    fileList.Add(Path.GetFileName(lib.Item1));
+                }
+            }
+            
+            RepackPlatformIntoPrimary(platform, fileList);
+        }
+
+        [Test]
+        [Platform(Include = "win")]
+        public async Task VerifiesMergedSignedAssemblyHasNoUnsignedFriend()
         {
             var platform = Platform.From(
                 Package.From("reactiveui-core", "6.5.0")
@@ -117,36 +150,60 @@ namespace ILRepack.IntegrationTests.NuGet
                 Package.From("Splat", "1.6.2")
                     .WithArtifact(@"lib\net45\Splat.dll"))
                 .WithExtraArgs("/keyfile:../../../ILRepack/ILRepack.snk");
-            platform.Packages.ToObservable()
-                .SelectMany(NuGetHelpers.GetNupkgAssembliesAsync)
-                .Do(lib => TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1))
-                .Select(lib => Path.GetFileName(lib.Item1))
-                .ToList()
-                .Do(list => RepackPlatform(platform, list))
-                .Wait();
-            var errors = PeverifyHelper.Peverify(tempDirectory, "test.dll").Do(Console.WriteLine).ToErrorCodes().ToEnumerable();
-            Assert.IsFalse(errors.Contains(PeverifyHelper.META_E_CA_FRIENDS_SN_REQUIRED));
+                
+            var fileList = new List<string>();
+            foreach (var package in platform.Packages)
+            {
+                var assemblies = await NuGetHelpers.GetNupkgAssembliesAsync(package);
+                foreach (var lib in assemblies)
+                {
+                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
+                    fileList.Add(Path.GetFileName(lib.Item1));
+                }
+            }
+            
+            RepackPlatform(platform, fileList);
+            
+            var errors = await PeverifyHelper.PeverifyAsync(tempDirectory, "test.dll");
+            foreach (var error in errors)
+            {
+                Console.WriteLine(error);
+            }
+            
+            var errorCodes = errors.ToErrorCodes();
+            Assert.IsFalse(errorCodes.Contains(PeverifyHelper.META_E_CA_FRIENDS_SN_REQUIRED));
         }
 
 
         [Test]
         [Platform(Include = "win")]
-        public void VerifiesMergedPdbUnchangedSourceIndexationForTfsIndexation()
+        public async Task VerifiesMergedPdbUnchangedSourceIndexationForTfsIndexation()
         {
             const string LibName = "TfsEngine.dll";
             const string PdbName = "TfsEngine.pdb";
 
             var platform = Platform.From(Package.From("TfsIndexer", "1.2.4"));
-            platform.Packages.ToObservable()
-                .SelectMany(NuGetHelpers.GetNupkgContentAsync)
+            
+            var packages = platform.Packages.ToList();
+            var allContent = await NuGetHelpers.GetNupkgContentAsync(packages[0]);
+            var relevantFiles = allContent
                 .Where(lib => new[] { LibName, PdbName }.Any(lib.Item1.EndsWith))
-                .Do(lib => TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1))
-                .ToArray() // to download PDB file as well
-                .SelectMany(_ => _)
+                .ToList();
+                
+            foreach (var lib in relevantFiles)
+            {
+                TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
+            }
+            
+            var dllFiles = relevantFiles
                 .Select(lib => Path.GetFileName(lib.Item1))
                 .Where(path => path.EndsWith("dll"))
-                .Do(path => RepackPlatform(platform, new List<string> { path }))
-                .Single();
+                .ToList();
+                
+            foreach (var path in dllFiles)
+            {
+                RepackPlatform(platform, new List<string> { path });
+            }
 
             var expected = GetSrcSrv(Tmp("TfsEngine.pdb"));
             var actual = GetSrcSrv(Tmp("test.pdb"));
@@ -160,26 +217,35 @@ namespace ILRepack.IntegrationTests.NuGet
 
         [Test]
         [Platform(Include = "win")]
-        public void VerifiesMergedPdbKeepSourceIndexationForHttpIndexation()
+        public async Task VerifiesMergedPdbKeepSourceIndexationForHttpIndexation()
         {
             var platform = Platform.From(
                 Package.From("SourceLink.Core", "1.1.0"),
                 Package.From("sourcelink.symbolstore", "1.1.0"));
-            platform.Packages.ToObservable()
-                .SelectMany(NuGetHelpers.GetNupkgContentAsync)
-                .Do(lib => TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1))
-                .Select(lib => Path.GetFileName(lib.Item1))
-                .Where(path => path.EndsWith("dll"))
-                .ToArray()
-                .Do(path => RepackPlatform(platform, path))
-                .Single();
+                
+            var allFiles = new List<string>();
+            foreach (var package in platform.Packages)
+            {
+                var content = await NuGetHelpers.GetNupkgContentAsync(package);
+                foreach (var lib in content)
+                {
+                    TestHelpers.SaveAs(lib.Item2(), tempDirectory, lib.Item1);
+                    var fileName = Path.GetFileName(lib.Item1);
+                    if (fileName.EndsWith("dll"))
+                    {
+                        allFiles.Add(fileName);
+                    }
+                }
+            }
+            
+            RepackPlatform(platform, allFiles);
 
             AssertSourceLinksAreEquivalent(
                 new[] { "SourceLink.Core.pdb", "SourceLink.SymbolStore.pdb", "SourceLink.SymbolStore.CorSym.pdb" }.Select(Tmp),
                 Tmp("test.pdb"));
         }
 
-        private void AssertSourceLinksAreEquivalent(IEnumerable<string> expectedPdbNames, string actualPdbName)
+        private static void AssertSourceLinksAreEquivalent(IEnumerable<string> expectedPdbNames, string actualPdbName)
         {
             CollectionAssert.AreEquivalent(expectedPdbNames.SelectMany(GetSourceLinks), GetSourceLinks(actualPdbName));
         }
@@ -227,15 +293,26 @@ namespace ILRepack.IntegrationTests.NuGet
             return Path.Combine(tempDirectory, file);
         }
 
-        void VerifyTest(IEnumerable<string> mergedLibraries)
+        async Task VerifyTestAsync(IEnumerable<string> mergedLibraries)
         {
-            if (XPlat.IsMono) return;
-            var errors = PeverifyHelper.Peverify(tempDirectory, "test.dll").Do(Console.WriteLine).ToEnumerable();
+            // ilverify is cross-platform, so we can run verification on all platforms
+            var errors = await PeverifyHelper.PeverifyAsync(tempDirectory, "test.dll");
+            foreach (var error in errors)
+            {
+                Console.WriteLine(error);
+            }
+            
             if (errors.Any())
             {
-                var origErrors = mergedLibraries.SelectMany(it => PeverifyHelper.Peverify(tempDirectory, it).ToEnumerable());
-                if (errors.Count() != origErrors.Count())
-                    Assert.Fail($"{errors.Count()} errors in peverify, check logs for details");
+                var origErrorsList = new List<string>();
+                foreach (var lib in mergedLibraries)
+                {
+                    var libErrors = await PeverifyHelper.PeverifyAsync(tempDirectory, lib);
+                    origErrorsList.AddRange(libErrors);
+                }
+                
+                if (errors.Count != origErrorsList.Count)
+                    Assert.Fail($"{errors.Count} errors in ilverify, check logs for details");
             }
         }
 

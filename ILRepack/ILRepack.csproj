@@ -4,7 +4,6 @@
     <ProjectGuid>{4A253A60-D998-4CA2-B9D5-46567A2FBF80}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>ILRepacking</RootNamespace>
-    <TargetFrameworks>netstandard2.0;net8.0;net461</TargetFrameworks>
     <StartupObject>ILRepacking.Application</StartupObject>
     <PublishUrl>publish\</PublishUrl>
     <MapFileExtensions>true</MapFileExtensions>
@@ -19,6 +18,7 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <LangVersion>latest</LangVersion>
     <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugType>portable</DebugType>
@@ -30,8 +30,6 @@
     <PackageReference Include="fasterflect" Version="3.0.0" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="Mono.Cecil" Version="0.11.4" />
-    <PackageReference Condition=" '$(TargetFramework)' != 'net461' " Include="Mono.Posix.NETStandard" Version="1.0.0" />
-    <PackageReference Condition=" '$(TargetFramework)' == 'net461' " Include="Mono.Posix" Version="4.0.0" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ILRepack.snk" />
