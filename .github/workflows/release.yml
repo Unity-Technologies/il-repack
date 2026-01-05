@@ -95,8 +95,7 @@ jobs:
           Fasterflect.dll \
           Mono.Cecil.dll \
           Mono.Cecil.Mdb.dll \
-          Mono.Cecil.Pdb.dll \
-          Mono.Posix.NETStandard.dll || echo "Repack failed, using original"
+          Mono.Cecil.Pdb.dll
         
         # If repack succeeded, use it; otherwise use original
         if [ -f "temp-repack/ILRepack.dll" ] && [ -s "temp-repack/ILRepack.dll" ]; then
@@ -120,8 +119,7 @@ jobs:
           Fasterflect.dll \
           Mono.Cecil.dll \
           Mono.Cecil.Mdb.dll \
-          Mono.Cecil.Pdb.dll \
-          Mono.Posix.NETStandard.dll || echo "Signed repack failed"
+          Mono.Cecil.Pdb.dll || echo "Signed repack failed"
       continue-on-error: true
     
     - name: Prepare artifacts
