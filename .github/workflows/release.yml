@@ -57,6 +57,11 @@ jobs:
           --self-contained true \
           --runtime linux-x64
     
+    - name: Restore test project dependencies
+      run: |
+        dotnet restore ILRepack.Tests/ILRepack.Tests.csproj
+        dotnet restore ILRepack.IntegrationTests/ILRepack.IntegrationTests.csproj
+    
     - name: Run unit tests
       run: |
         dotnet test ILRepack.Tests/ILRepack.Tests.csproj \

@@ -21,6 +21,7 @@
     <PackageReference Include="Mono.Cecil" Version="0.11.6" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="NUnit" Version="4.4.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
     <PackageReference Include="SourceLink" Version="1.1.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.1" />
